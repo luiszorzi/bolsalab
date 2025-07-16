@@ -199,7 +199,7 @@ class MainWindow(tk.Tk):
         CargaEletronicaWindow(self)
 
 
-# ---------- Executar o programa ----------
+
 if __name__ == "__main__":
     app = MainWindow()
     app.mainloop()
