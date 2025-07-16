@@ -1,0 +1,169 @@
+import pyvisa
+import time
+import csv
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# === Classe para o multímetro FLUKE 8846A ===
+class Fluke8846A:
+    def __init__(self, ip_address="172.30.248.100", port=3490):
+        self.rm = pyvisa.ResourceManager('@py')
+        self.device = None
+        self.ip = ip_address
+        self.port = port
+
+    def connect(self):
+        try:
+            self.device = self.rm.open_resource(f"TCPIP0::{self.ip}::{self.port}::SOCKET")
+            self.device.timeout = 5000
+            self.device.write_termination = '\n'
+            self.device.read_termination = '\n'
+            print("Multímetro conectado:", self.get_id())
+            return True
+        except Exception as e:
+            print("Erro ao conectar ao multímetro:", e)
+            return False
+
+    def get_id(self):
+        return self.device.query("*IDN?").strip()
+
+    def configure_voltage(self, nplc=1):
+        self.device.write("CONF:VOLT:DC")
+        self.device.write("VOLT:DC:RANGE 50")
+        self.device.write(f"VOLT:DC:NPLC {nplc}")
+        self.device.write("TRIG:SOUR IMM")
+        self.device.write("SAMP:COUN 1")
+        time.sleep(1)
+
+    def read_voltage(self):
+        self.device.write("INIT")
+        return float(self.device.query("FETCH?").split(',')[0])
+
+    def close(self):
+        if self.device:
+            self.device.close()
+            print("Conexão com multímetro encerrada")
+
+# === Funções auxiliares ===
+def inicializar_csv(nome_arquivo):
+    with open(nome_arquivo, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Tempo_s", "Tensao_Fonte_V", "Corrente_Fonte_A", "Tensao_Multimetro_V"])
+
+def salvar_csv(nome_arquivo, tempo, tensao_fonte, corrente_fonte, tensao_multimetro):
+    with open(nome_arquivo, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            f"{tempo:.1f}",
+            f"{tensao_fonte:.3f}",
+            f"{corrente_fonte:.6f}",
+            f"{tensao_multimetro:.6f}"
+        ])
+
+# === Função principal ===
+def main():
+    print("Teste de medição de circuito RC\n")
+
+    rm = pyvisa.ResourceManager()
+
+    # Conectar à fonte via USB
+    try:
+        fonte_usb_address = 'USB0::0x0699::0x0392::C010658::INSTR'
+        fonte = rm.open_resource(fonte_usb_address)
+        print("Fonte conectada:", fonte.query("*IDN?").strip())
+    except Exception as e:
+        print("Erro ao conectar à fonte USB:", e)
+        return
+
+    # Conectar ao multímetro
+    multimetro = Fluke8846A(ip_address="172.30.248.100", port=3490)
+    if not multimetro.connect():
+        return
+    multimetro.configure_voltage() # Configure o multímetro para medição de tensão DC
+
+    nome_csv = "dados_circuito_rc.csv"
+    inicializar_csv(nome_csv)
+
+    current_time = 0.0
+    tensao_fonte_aplicada = 0.0
+    tensao_multimetro_lida = 0.0
+
+    try:
+        fonte.write("OUTP ON") # Liga a saída da fonte
+
+        # === Estágio 1: Aumentar a tensão para 10V até o multímetro chegar a 9.5V ===
+        print("\n[Estágio 1] Aumentando a tensão da fonte para 10V (aguardando 9.5V no multímetro)...")
+        fonte.write("VOLT 10")
+        while tensao_multimetro_lida < 9.5:
+            tensao_fonte_aplicada = float(fonte.query("MEAS:VOLT?"))
+            corrente_fonte = float(fonte.query("MEAS:CURR?"))
+            tensao_multimetro_lida = multimetro.read_voltage()
+
+            salvar_csv(nome_csv, current_time, tensao_fonte_aplicada, corrente_fonte, tensao_multimetro_lida)
+            print(f"Tempo: {current_time:.1f}s | Fonte: {tensao_fonte_aplicada:.3f} V | Multímetro: {tensao_multimetro_lida:.6f} V")
+            
+            current_time += 0.1
+            time.sleep(0.1)
+
+        # === Estágio 2: Trocar para 20V até o multímetro chegar a 19.5V ===
+        print("\n[Estágio 2] Tensão no multímetro >= 9.5V. Trocando a fonte para 20V (aguardando 19.5V)...")
+        fonte.write("VOLT 20")
+        while tensao_multimetro_lida < 19.5:
+            tensao_fonte_aplicada = float(fonte.query("MEAS:VOLT?"))
+            corrente_fonte = float(fonte.query("MEAS:CURR?"))
+            tensao_multimetro_lida = multimetro.read_voltage()
+
+            salvar_csv(nome_csv, current_time, tensao_fonte_aplicada, corrente_fonte, tensao_multimetro_lida)
+            print(f"Tempo: {current_time:.1f}s | Fonte: {tensao_fonte_aplicada:.3f} V | Multímetro: {tensao_multimetro_lida:.6f} V")
+            
+            current_time += 0.1
+            time.sleep(0.1)
+
+        # === Estágio 3: Reduzir para 5V até o multímetro chegar a 5.5V ===
+        print("\n[Estágio 3] Tensão no multímetro >= 19.5V. Reduzindo a fonte para 5V (aguardando 5.5V)...")
+        fonte.write("VOLT 5")
+        while tensao_multimetro_lida > 5.5: # Condição para queda de tensão
+            tensao_fonte_aplicada = float(fonte.query("MEAS:VOLT?"))
+            corrente_fonte = float(fonte.query("MEAS:CURR?"))
+            tensao_multimetro_lida = multimetro.read_voltage()
+
+            salvar_csv(nome_csv, current_time, tensao_fonte_aplicada, corrente_fonte, tensao_multimetro_lida)
+            print(f"Tempo: {current_time:.1f}s | Fonte: {tensao_fonte_aplicada:.3f} V | Multímetro: {tensao_multimetro_lida:.6f} V")
+            
+            current_time += 0.1
+            time.sleep(0.1)
+        
+        print(f"\n[FIM] Tensão no multímetro atingiu 5.5V. Encerrando o programa.")
+
+    except Exception as e:
+        print(f"\nOcorreu um erro durante a medição: {e}")
+
+    finally:
+        fonte.write("OUTP OFF") # Desliga a saída da fonte
+        multimetro.close()
+        fonte.close()
+        print("\nConexões encerradas.")
+
+    # Gráfico final
+    try:
+        df = pd.read_csv(nome_csv)
+        plt.figure(figsize=(12, 6))
+
+        plt.plot(df["Tempo_s"], df["Tensao_Fonte_V"], label="Tensão da Fonte (V)", color="blue", marker="o", linestyle='-')
+        plt.plot(df["Tempo_s"], df["Corrente_Fonte_A"], label="Corrente da Fonte (A)", color="green", marker="x", linestyle='-')
+        plt.plot(df["Tempo_s"], df["Tensao_Multimetro_V"], label="Tensão no Multímetro (V)", color="red", marker="^", linestyle='-')
+
+        plt.xlabel("Tempo (s)")
+        plt.ylabel("Valor")
+        plt.title("Tensão e Corrente da Fonte vs Medição do Multímetro")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+    except Exception as e:
+        print(f"Erro ao gerar o gráfico: {e}")
+        print(f"Verifique se o arquivo CSV '{nome_csv}' foi gerado corretamente e contém dados.")
+
+
+if __name__ == "__main__":
+    main()
