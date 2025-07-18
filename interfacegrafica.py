@@ -1,460 +1,428 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import pyvisa
 import threading
 import time
+import socket
+
+# --- Classe para comunicação TCP socket com o multímetro Fluke ---
+class FlukeSocket:
+    def __init__(self, ip, port=3490, timeout=5):
+        self.ip = ip
+        self.port = port
+        self.timeout = timeout
+        self.sock = None
+    
+    def connect(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect((self.ip, self.port))
+    
+    def disconnect(self):
+        if self.sock:
+            self.sock.close()
+            self.sock = None
+    
+    def send_command(self, cmd):
+        if not self.sock:
+            raise RuntimeError("Socket não conectado")
+        self.sock.sendall(cmd.encode() + b'\n')
+    
+    def receive_response(self, buffer_size=1024):
+        if not self.sock:
+            raise RuntimeError("Socket não conectado")
+        resp = self.sock.recv(buffer_size)
+        return resp.decode().strip()
+    
+    def query(self, cmd):
+        self.send_command(cmd)
+        return self.receive_response()
+
+
+# JANELA PRINCIPAL DE SELEÇÃO
 
 class MainWindow(tk.Tk):
+
     def __init__(self):
         super().__init__()
-        self.title("Seleção de Equipamento")
-        self.geometry("320x220")
+        self.title("Seleção de Equipamentos")
+        self.geometry("350x250")
 
-        tk.Label(self, text="Escolha o equipamento:", font=("Arial", 14)).pack(pady=20)
+        self.use_fonte = tk.BooleanVar()
+        self.use_multimetro = tk.BooleanVar()
+        self.use_carga = tk.BooleanVar()
 
-        btn_fonte = tk.Button(self, text="Fonte de Alimentação", width=25, command=self.abrir_fonte)
-        btn_fonte.pack(pady=5)
+        tk.Label(self, text="Escolher equipamentos:", font=("Arial", 16)).pack(pady=20)
 
-        btn_multimetro = tk.Button(self, text="Multímetro", width=25, command=self.abrir_multimetro)
-        btn_multimetro.pack(pady=5)
+        tk.Checkbutton(self, text="Fonte de Alimentação", variable=self.use_fonte, font=("Arial", 12)).pack(anchor='w', padx=40)
+        tk.Checkbutton(self, text="Multímetro", variable=self.use_multimetro, font=("Arial", 12)).pack(anchor='w', padx=40)
+        tk.Checkbutton(self, text="Carga Eletrônica", variable=self.use_carga, font=("Arial", 12)).pack(anchor='w', padx=40)
 
-        btn_carga = tk.Button(self, text="Carga Eletrônica", width=25, command=self.abrir_carga)
-        btn_carga.pack(pady=5)
+        btn_avancar = tk.Button(self, text="Avançar →", width=25, command=self.abrir_controle_combinado)
+        btn_avancar.pack(pady=25)
 
-    def abrir_fonte(self):
+    def abrir_controle_combinado(self):
+        selections = {
+            'fonte': self.use_fonte.get(),
+            'multimetro': self.use_multimetro.get(),
+            'carga': self.use_carga.get()
+        }
+
+        if not any(selections.values()):
+            messagebox.showwarning("Nenhuma Seleção", "Por favor, selecione pelo menos um equipamento para continuar.")
+            return
+            
         self.withdraw()
-        fonte = FonteAlimentacaoWindow(self)
-        fonte.grab_set()
+        control_window = CombinedControlWindow(self, selections)
+        control_window.grab_set()
 
-    def abrir_multimetro(self):
-        self.withdraw()
-        mult = MultimetroWindow(self)
-        mult.grab_set()
 
-    def abrir_carga(self):
-        self.withdraw()
-        carga = CargaEletronicaWindow(self)
-        carga.grab_set()
+# JANELA DE CONTROLE COMBINADO (para controlar todos os equipamentos selecionados)
 
-# -------------------- Fonte de Alimentação --------------------
-
-class FonteAlimentacaoWindow(tk.Toplevel):
-    def __init__(self, master):
+class CombinedControlWindow(tk.Toplevel):
+    
+    def __init__(self, master, selections):
         super().__init__(master)
-        self.title("Fonte de Alimentação (PWS4305)")
-        self.geometry("520x620")
+        self.title("Controle de Equipamentos")
+        self.geometry("600x750")
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        self.selections = selections
         self.rm = pyvisa.ResourceManager()
-        self.instrumento = None
-        self.etapas = []
+        self.instruments = {}
+        self.entries = {}
+        self.etapas = {'fonte': [], 'carga': []}
+        self.labels = {}
+        self.frames = {}
+        
+        main_frame = tk.Frame(self)
+        main_frame.pack(padx=10, pady=10, fill='both', expand=True)
+        
+        if self.selections['fonte']:
+            self._create_fonte_ui(main_frame)
+        if self.selections['multimetro']:
+            self._create_multimetro_ui(main_frame)
+        if self.selections['carga']:
+            self._create_carga_ui(main_frame)
 
-        tk.Label(self, text="Fonte Tektronix PWS4305", font=("Arial", 16)).pack(pady=10)
+        control_frame = tk.Frame(self)
+        control_frame.pack(pady=10, fill='x', padx=10)
 
-        frame_endereco = tk.Frame(self)
-        frame_endereco.pack(pady=5)
-        tk.Label(frame_endereco, text="Endereço VISA:").pack(side=tk.LEFT)
-        self.entry_endereco = tk.Entry(frame_endereco, width=35)
-        self.entry_endereco.pack(side=tk.LEFT)
-        self.entry_endereco.insert(0, "USB0::0x0699::0x0408::C000012::INSTR")
+        self.btn_conectar = tk.Button(control_frame, text="Conectar Equipamentos", command=self.conectar_todos)
+        self.btn_conectar.pack(pady=5)
+        
+        self.btn_iniciar = tk.Button(control_frame, text="Iniciar Sequência", command=self.iniciar_sequencia, state=tk.DISABLED)
+        self.btn_iniciar.pack(pady=5)
+        
+        self.label_status_geral = tk.Label(control_frame, text="Status: Aguardando conexão...", font=("Arial", 12))
+        self.label_status_geral.pack(pady=10)
 
-        self.btn_buscar = tk.Button(frame_endereco, text="Buscar", command=self.buscar_enderecos)
-        self.btn_buscar.pack(side=tk.LEFT, padx=5)
-
-        self.btn_conectar = tk.Button(self, text="Conectar", command=self.conectar)
-        self.btn_conectar.pack(pady=10)
-
-        self.frame_etapas = tk.Frame(self)
-        self.frame_etapas.pack(pady=10)
-
-        self.adicionar_etapa()
-
-        self.btn_mais_etapa = tk.Button(self, text="+ Adicionar Etapa", command=self.adicionar_etapa, state=tk.DISABLED)
-        self.btn_mais_etapa.pack(pady=5)
-
-        self.btn_iniciar = tk.Button(self, text="Iniciar Etapas", command=self.iniciar_etapas, state=tk.DISABLED)
-        self.btn_iniciar.pack(pady=10)
-
-        self.label_status = tk.Label(self, text="Status: ---", font=("Arial", 12))
-        self.label_status.pack(pady=10)
-
-        self.btn_voltar = tk.Button(self, text="← Voltar", command=self.on_close)
+        self.btn_voltar = tk.Button(control_frame, text="← Voltar", command=self.on_close)
         self.btn_voltar.pack(side=tk.BOTTOM, pady=10)
 
-    def buscar_enderecos(self):
-        try:
-            recursos = self.rm.list_resources()
-            if not recursos:
-                messagebox.showinfo("Nenhum dispositivo", "Nenhum dispositivo VISA encontrado.")
-                return
+    # ---------- MÉTODOS DE CRIAÇÃO DE UI ----------
+    
+    def _create_fonte_ui(self, parent):
+        frame = ttk.LabelFrame(parent, text="Fonte de Alimentação (PWS4305)")
+        frame.pack(pady=10, padx=5, fill='x')
+        self.frames['fonte'] = frame
+        
+        addr_frame = tk.Frame(frame)
+        addr_frame.pack(pady=5, fill='x', padx=5)
+        tk.Label(addr_frame, text="Endereço VISA:").pack(side=tk.LEFT)
+        entry_addr = tk.Entry(addr_frame, width=40)
+        entry_addr.insert(0, "USB0::0x0699::0x0408::C000012::INSTR")
+        entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
+        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr)).pack(side=tk.LEFT)
+        self.entries['fonte_addr'] = entry_addr
+        
+        self.frames['fonte_etapas'] = tk.Frame(frame)
+        self.frames['fonte_etapas'].pack(pady=5, padx=5)
+        
+        botoes_etapa_frame = tk.Frame(frame)
+        botoes_etapa_frame.pack(pady=5)
+        tk.Button(botoes_etapa_frame, text="+ Adicionar Etapa", command=self.adicionar_etapa_fonte).pack(side=tk.LEFT, padx=5)
+        tk.Button(botoes_etapa_frame, text="- Remover Etapa", command=self.remover_etapa_fonte).pack(side=tk.LEFT, padx=5)
 
-            janela_lista = tk.Toplevel(self)
-            janela_lista.title("Dispositivos encontrados")
-            janela_lista.geometry("420x300")
-            tk.Label(janela_lista, text="Selecione um endereço:", font=("Arial", 12)).pack(pady=5)
-            lista = tk.Listbox(janela_lista, width=60)
-            lista.pack(pady=5)
-            for r in recursos:
-                lista.insert(tk.END, r)
+        self.adicionar_etapa_fonte()
 
-            def selecionar():
-                selecionado = lista.get(tk.ACTIVE)
-                self.entry_endereco.delete(0, tk.END)
-                self.entry_endereco.insert(0, selecionado)
-                janela_lista.destroy()
+    def _create_multimetro_ui(self, parent):
+        frame = ttk.LabelFrame(parent, text="Multímetro")
+        frame.pack(pady=10, padx=5, fill='x')
+        
+        addr_frame = tk.Frame(frame)
+        addr_frame.pack(pady=5, fill='x', padx=5)
+        tk.Label(addr_frame, text="Endereço IP:").pack(side=tk.LEFT)
+        entry_addr = tk.Entry(addr_frame, width=40)
+        entry_addr.insert(0, "172.30.248.100")
+        entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
+        self.entries['multimetro_ip'] = entry_addr
 
-            tk.Button(janela_lista, text="Selecionar", command=selecionar).pack(pady=5)
+        self.labels['multimetro_leitura'] = tk.Label(frame, text="Tensão medida: ---", font=("Arial", 12))
+        self.labels['multimetro_leitura'].pack(pady=10)
+        
+    def _create_carga_ui(self, parent):
+        frame = ttk.LabelFrame(parent, text="Carga Eletrônica")
+        frame.pack(pady=10, padx=5, fill='x')
+        self.frames['carga'] = frame
+        
+        addr_frame = tk.Frame(frame)
+        addr_frame.pack(pady=5, fill='x', padx=5)
+        tk.Label(addr_frame, text="Endereço VISA:").pack(side=tk.LEFT)
+        entry_addr = tk.Entry(addr_frame, width=40)
+        entry_addr.insert(0, "USB0::0x05E6::0x2380::802436052757810021::INSTR")
+        entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
+        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr)).pack(side=tk.LEFT)
+        self.entries['carga_addr'] = entry_addr
 
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao buscar dispositivos:\n{e}")
+        self.frames['carga_etapas'] = tk.Frame(frame)
+        self.frames['carga_etapas'].pack(pady=5, padx=5)
+        
+        botoes_etapa_frame = tk.Frame(frame)
+        botoes_etapa_frame.pack(pady=5)
+        tk.Button(botoes_etapa_frame, text="+ Adicionar Etapa", command=self.adicionar_etapa_carga).pack(side=tk.LEFT, padx=5)
+        tk.Button(botoes_etapa_frame, text="- Remover Etapa", command=self.remover_etapa_carga).pack(side=tk.LEFT, padx=5)
 
-    def conectar(self):
-        endereco = self.entry_endereco.get()
-        try:
-            self.instrumento = self.rm.open_resource(endereco)
-            self.instrumento.timeout = 3000
-            idn = self.instrumento.query("*IDN?")
-            messagebox.showinfo("Conectado", f"Instrumento identificado:\n{idn}")
-            self.btn_iniciar.config(state=tk.NORMAL)
-            self.btn_mais_etapa.config(state=tk.NORMAL)
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha na conexão:\n{e}")
+        self.adicionar_etapa_carga()
 
-    def adicionar_etapa(self):
-        frame = tk.Frame(self.frame_etapas)
-        frame.pack(pady=5)
+    # ---------- MÉTODOS PARA ADICIONAR/REMOVER ETAPAS DINAMICAMENTE ----------
 
+    def adicionar_etapa_fonte(self): 
+        frame = tk.Frame(self.frames['fonte_etapas'])
+        frame.pack(pady=2)
+        tk.Label(frame, text=f"Etapa {len(self.etapas['fonte']) + 1}:").pack(side=tk.LEFT, padx=5)
+        
         tk.Label(frame, text="Tensão (V):").pack(side=tk.LEFT)
         entry_v = tk.Entry(frame, width=7)
-        entry_v.pack(side=tk.LEFT)
         entry_v.insert(0, "12.0")
+        entry_v.pack(side=tk.LEFT)
+        
+        tk.Label(frame, text="Corrente (A):").pack(side=tk.LEFT, padx=(5,0))
+        entry_i = tk.Entry(frame, width=7)
+        entry_i.insert(0, "1.0")
+        entry_i.pack(side=tk.LEFT)
 
-        tk.Label(frame, text="Tempo (s):").pack(side=tk.LEFT)
+        tk.Label(frame, text="Tempo (s):").pack(side=tk.LEFT, padx=(5,0))
         entry_t = tk.Entry(frame, width=5)
+        entry_t.insert(0, "5")
         entry_t.pack(side=tk.LEFT)
-        entry_t.insert(0, "2")
+        
+        self.etapas['fonte'].append((frame, entry_v, entry_i, entry_t))
 
-        self.etapas.append((entry_v, entry_t))
+    def remover_etapa_fonte(self):
+        if not self.etapas['fonte']:
+            messagebox.showwarning("Aviso", "Nenhuma etapa da fonte para remover.")
+            return
+        
+        frame_a_remover, _, _, _ = self.etapas['fonte'].pop()
+        frame_a_remover.destroy()
 
-    def iniciar_etapas(self):
-        threading.Thread(target=self.executar_etapas, daemon=True).start()
+        for i, (frame, _, _, _) in enumerate(self.etapas['fonte']):
+            label_etapa = frame.winfo_children()[0]
+            label_etapa.config(text=f"Etapa {i + 1}:")
 
-    def executar_etapas(self):
-        self.btn_iniciar.config(state=tk.DISABLED)
-        try:
-            for i, (entry_v, entry_t) in enumerate(self.etapas):
-                v = float(entry_v.get())
-                t = float(entry_t.get())
+    def adicionar_etapa_carga(self):
+        frame = tk.Frame(self.frames['carga_etapas'])
+        frame.pack(pady=2)
+        
+        tk.Label(frame, text=f"Etapa {len(self.etapas['carga']) + 1}:").pack(side=tk.LEFT, padx=5)
 
-                self.label_status.config(text=f"Aplicando {v} V por {t} s (Etapa {i+1})")
-                self.instrumento.write(f"VOLT {v}")
-                self.instrumento.write("OUTP ON")
+        var_modo = tk.StringVar(value="Corrente Constante (CC)")
+        modos = ["Corrente Constante (CC)", "Tensão Constante (CV)", "Potência Constante (CP)", "Resistência Constante (CR)"]
+        modo_menu = ttk.Combobox(frame, textvariable=var_modo, values=modos, width=25, state="readonly")
+        modo_menu.pack(side=tk.LEFT, padx=5)
 
-                time.sleep(t)
-
-                self.instrumento.write("OUTP OFF")
-                time.sleep(0.5)
-
-            self.label_status.config(text="Sequência finalizada. Saída desligada.")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro durante as etapas:\n{e}")
-        finally:
-            self.btn_iniciar.config(state=tk.NORMAL)
-
-    def on_close(self):
-        try:
-            if self.instrumento:
-                self.instrumento.write("OUTP OFF")
-        except Exception as e:
-            print("Erro ao desligar a fonte:", e)
-        self.master.deiconify()
-        self.destroy()
-
-# -------------------- Multímetro --------------------
-
-class MultimetroWindow(tk.Toplevel):
-    def __init__(self, master):
-        super().__init__(master)
-        self.title("Multímetro")
-        self.geometry("460x320")
-        self.protocol("WM_DELETE_WINDOW", self.voltar)
-
-        self.rm = pyvisa.ResourceManager()
-        self.instrumento = None
-
-        tk.Label(self, text="Multímetro", font=("Arial", 16)).pack(pady=10)
-
-        frame = tk.Frame(self)
-        frame.pack(pady=5)
-
-        tk.Label(frame, text="Endereço VISA:").pack(side=tk.LEFT)
-        self.entry_endereco = tk.Entry(frame, width=35)
-        self.entry_endereco.pack(side=tk.LEFT)
-        self.entry_endereco.insert(0, "TCPIP::192.168.0.10::INSTR")
-
-        self.btn_buscar = tk.Button(frame, text="Buscar", command=self.buscar_enderecos)
-        self.btn_buscar.pack(side=tk.LEFT, padx=5)
-
-        tk.Button(self, text="Conectar", command=self.conectar).pack(pady=10)
-        self.label_medida = tk.Label(self, text="Tensão medida: ---", font=("Arial", 12))
-        self.label_medida.pack(pady=10)
-
-        self.btn_medida = tk.Button(self, text="Ler Medição", command=self.ler_medida, state=tk.DISABLED)
-        self.btn_medida.pack(pady=10)
-
-        tk.Button(self, text="← Voltar", command=self.voltar).pack(side=tk.BOTTOM, pady=10)
-
-    def buscar_enderecos(self):
-        try:
-            recursos = self.rm.list_resources()
-            if not recursos:
-                messagebox.showinfo("Nenhum dispositivo", "Nenhum dispositivo VISA encontrado.")
-                return
-
-            janela_lista = tk.Toplevel(self)
-            janela_lista.title("Dispositivos encontrados")
-            janela_lista.geometry("420x300")
-            tk.Label(janela_lista, text="Selecione um endereço:", font=("Arial", 12)).pack(pady=5)
-            lista = tk.Listbox(janela_lista, width=60)
-            lista.pack(pady=5)
-            for r in recursos:
-                lista.insert(tk.END, r)
-
-            def selecionar():
-                selecionado = lista.get(tk.ACTIVE)
-                self.entry_endereco.delete(0, tk.END)
-                self.entry_endereco.insert(0, selecionado)
-                janela_lista.destroy()
-
-            tk.Button(janela_lista, text="Selecionar", command=selecionar).pack(pady=5)
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao buscar dispositivos:\n{e}")
-
-    def conectar(self):
-        endereco = self.entry_endereco.get()
-        try:
-            self.instrumento = self.rm.open_resource(endereco)
-            self.instrumento.timeout = 3000
-            idn = self.instrumento.query("*IDN?")
-            messagebox.showinfo("Conectado", f"Instrumento identificado:\n{idn}")
-            self.btn_medida.config(state=tk.NORMAL)
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha na conexão:\n{e}")
-
-    def ler_medida(self):
-        try:
-            valor = self.instrumento.query("MEAS:VOLT:DC?").strip()
-            self.label_medida.config(text=f"Tensão medida: {valor} V")
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro na leitura:\n{e}")
-
-    def voltar(self):
-        self.master.deiconify()
-        self.destroy()
-
-# -------------------- Carga Eletrônica --------------------
-
-class CargaEletronicaWindow(tk.Toplevel):
-    def __init__(self, master):
-        super().__init__(master)
-        self.title("Carga Eletrônica")
-        self.geometry("520x660")
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
-
-        self.rm = pyvisa.ResourceManager()
-        self.instrumento = None
-        self.etapas = []
-
-        tk.Label(self, text="Carga Eletrônica", font=("Arial", 16)).pack(pady=10)
-
-        # Endereço VISA
-        frame_endereco = tk.Frame(self)
-        frame_endereco.pack(pady=5)
-        tk.Label(frame_endereco, text="Endereço VISA:").pack(side=tk.LEFT)
-        self.entry_endereco = tk.Entry(frame_endereco, width=40)
-        self.entry_endereco.pack(side=tk.LEFT)
-        self.entry_endereco.insert(0, "USB0::0x05E6::0x2380::802436052757810021::INSTR")
-
-        self.btn_buscar = tk.Button(frame_endereco, text="Buscar", command=self.buscar_enderecos)
-        self.btn_buscar.pack(side=tk.LEFT, padx=5)
-
-        self.btn_conectar = tk.Button(self, text="Conectar", command=self.conectar)
-        self.btn_conectar.pack(pady=10)
-
-        # Modo operação
-        frame_modo = tk.Frame(self)
-        frame_modo.pack(pady=5)
-        tk.Label(frame_modo, text="Modo de Operação:").pack(side=tk.LEFT)
-
-        self.modo_var = tk.StringVar(value="Tensão Constante")
-        modos = ["Tensão Constante", "Corrente Constante", "Potência Constante", "Resistência Constante"]
-        self.modo_menu = tk.OptionMenu(frame_modo, self.modo_var, *modos, command=self.modo_alterado)
-        self.modo_menu.pack(side=tk.LEFT)
-
-        # Etapas
-        self.frame_etapas = tk.Frame(self)
-        self.frame_etapas.pack(pady=10)
-
-        self.btn_mais_etapa = tk.Button(self, text="+ Adicionar Etapa", command=self.adicionar_etapa, state=tk.DISABLED)
-        self.btn_mais_etapa.pack(pady=5)
-
-        self.btn_iniciar = tk.Button(self, text="Iniciar Etapas", command=self.iniciar_etapas, state=tk.DISABLED)
-        self.btn_iniciar.pack(pady=10)
-
-        self.label_status = tk.Label(self, text="Status: ---", font=("Arial", 12))
-        self.label_status.pack(pady=10)
-
-        self.btn_voltar = tk.Button(self, text="← Voltar", command=self.on_close)
-        self.btn_voltar.pack(side=tk.BOTTOM, pady=10)
-
-        # Inicializa com uma etapa
-        self.adicionar_etapa()
-
-    def buscar_enderecos(self):
-        try:
-            recursos = self.rm.list_resources()
-            if not recursos:
-                messagebox.showinfo("Nenhum dispositivo", "Nenhum dispositivo VISA encontrado.")
-                return
-
-            janela_lista = tk.Toplevel(self)
-            janela_lista.title("Dispositivos encontrados")
-            janela_lista.geometry("420x300")
-            tk.Label(janela_lista, text="Selecione um endereço:", font=("Arial", 12)).pack(pady=5)
-            lista = tk.Listbox(janela_lista, width=60)
-            lista.pack(pady=5)
-            for r in recursos:
-                lista.insert(tk.END, r)
-
-            def selecionar():
-                selecionado = lista.get(tk.ACTIVE)
-                self.entry_endereco.delete(0, tk.END)
-                self.entry_endereco.insert(0, selecionado)
-                janela_lista.destroy()
-
-            tk.Button(janela_lista, text="Selecionar", command=selecionar).pack(pady=5)
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao buscar dispositivos:\n{e}")
-
-    def conectar(self):
-        endereco = self.entry_endereco.get()
-        try:
-            self.instrumento = self.rm.open_resource(endereco)
-            self.instrumento.timeout = 3000
-            idn = self.instrumento.query("*IDN?")
-            messagebox.showinfo("Conectado", f"Instrumento identificado:\n{idn}")
-            self.btn_mais_etapa.config(state=tk.NORMAL)
-            self.btn_iniciar.config(state=tk.NORMAL)
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha na conexão:\n{e}")
-
-    def modo_alterado(self, _):
-        # Limpa etapas e cria uma nova para o modo atual
-        for w in self.frame_etapas.winfo_children():
-            w.destroy()
-        self.etapas.clear()
-        self.adicionar_etapa()
-
-    def adicionar_etapa(self):
-        frame = tk.Frame(self.frame_etapas)
-        frame.pack(pady=5)
-
-        modo = self.modo_var.get()
-
-        if modo == "Resistência Constante":
-            tk.Label(frame, text="Resistência (Ω):").pack(side=tk.LEFT)
-            entry_val = tk.Entry(frame, width=8)
-            entry_val.pack(side=tk.LEFT)
-            entry_val.insert(0, "100")
-
-        else:
-            unidade = {
-                "Tensão Constante": "Tensão (V):",
-                "Corrente Constante": "Corrente (A):",
-                "Potência Constante": "Potência (W):"
-            }
-            tk.Label(frame, text=unidade.get(modo, "Valor:")).pack(side=tk.LEFT)
-            entry_val = tk.Entry(frame, width=8)
-            entry_val.pack(side=tk.LEFT)
-            if modo == "Tensão Constante":
-                entry_val.insert(0, "12.0")
-            elif modo == "Corrente Constante":
-                entry_val.insert(0, "1.0")
-            elif modo == "Potência Constante":
-                entry_val.insert(0, "10.0")
+        entry_val = tk.Entry(frame, width=8)
+        entry_val.pack(side=tk.LEFT, padx=5)
 
         tk.Label(frame, text="Tempo (s):").pack(side=tk.LEFT)
         entry_tempo = tk.Entry(frame, width=5)
-        entry_tempo.pack(side=tk.LEFT)
         entry_tempo.insert(0, "2")
+        entry_tempo.pack(side=tk.LEFT, padx=5)
 
-        self.etapas.append((entry_val, entry_tempo))
+        self.etapas['carga'].append((frame, var_modo, entry_val, entry_tempo))
 
-    def iniciar_etapas(self):
-        threading.Thread(target=self.executar_etapas, daemon=True).start()
+    def remover_etapa_carga(self):
+        if not self.etapas['carga']:
+            messagebox.showwarning("Aviso", "Nenhuma etapa da carga para remover.")
+            return
 
-    def executar_etapas(self):
-        self.btn_iniciar.config(state=tk.DISABLED)
-        self.btn_mais_etapa.config(state=tk.DISABLED)
+        frame_a_remover, _, _, _ = self.etapas['carga'].pop()
+        frame_a_remover.destroy()
+
+        for i, (frame, _, _, _) in enumerate(self.etapas['carga']):
+            label_etapa = frame.winfo_children()[0]
+            label_etapa.config(text=f"Etapa {i + 1}:")
+
+    # ---------- MÉTODOS DE CONTROLE E COMUNICAÇÃO VISA ----------
+
+    def buscar_enderecos(self, entry_widget):
         try:
-            modo = self.modo_var.get()
-            for i, (entry_val, entry_tempo) in enumerate(self.etapas):
-                valor = float(entry_val.get())
-                tempo_s = float(entry_tempo.get())
+            recursos = self.rm.list_resources()
+            if not recursos:
+                messagebox.showinfo("Nenhum dispositivo", "Nenhum dispositivo VISA encontrado.")
+                return
 
-                self.label_status.config(text=f"{modo}: {valor} por {tempo_s}s (Etapa {i+1})")
+            janela_lista = tk.Toplevel(self)
+            janela_lista.title("Dispositivos encontrados")
+            janela_lista.geometry("420x300")
+            tk.Label(janela_lista, text="Selecione um endereço:", font=("Arial", 12)).pack(pady=5)
+            lista = tk.Listbox(janela_lista, width=60)
+            lista.pack(pady=5)
+            for r in recursos:
+                lista.insert(tk.END, r)
 
-                if modo == "Tensão Constante":
-                    self.instrumento.write("*RST")
-                    self.instrumento.write("FUNC VOLT")
-                    self.instrumento.write(f"VOLT {valor}")
-                    self.instrumento.write("INPUT ON")
+            def selecionar():
+                selecionado = lista.get(tk.ACTIVE)
+                entry_widget.delete(0, tk.END)
+                entry_widget.insert(0, selecionado)
+                janela_lista.destroy()
 
-                elif modo == "Corrente Constante":
-                    self.instrumento.write("*RST")
-                    self.instrumento.write("FUNC CURR")
-                    self.instrumento.write(f"CURR {valor}")
-                    self.instrumento.write("INPUT ON")
+            tk.Button(janela_lista, text="Selecionar", command=selecionar).pack(pady=5)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao buscar dispositivos:\n{e}")
 
-                elif modo == "Potência Constante":
-                    self.instrumento.write("*RST")
-                    self.instrumento.write("FUNC POW")
-                    self.instrumento.write(f"POW {valor}")
-                    self.instrumento.write("INPUT ON")
+    def conectar_todos(self):
+        self.instruments = {}
+        log = []
+        try:
+            if self.selections['fonte']:
+                addr = self.entries['fonte_addr'].get()
+                inst = self.rm.open_resource(addr)
+                inst.timeout = 5000 # Timeout de 5 segundos, mais razoável
+                self.instruments['fonte'] = inst
+                log.append(f"Fonte Conectada: {inst.query('*IDN?')}")
+            
+            if self.selections['multimetro']:
+                ip = self.entries['multimetro_ip'].get()
+                fluke = FlukeSocket(ip)
+                fluke.connect()
+                self.instruments['multimetro'] = fluke
+                try:
+                    idn = fluke.query('*IDN?')
+                    log.append(f"Multímetro Conectado: {idn}")
+                except Exception:
+                    log.append("Multímetro conectado")
 
-                elif modo == "Resistência Constante":
-                    self.instrumento.write("*RST")
-                    self.instrumento.write("FUNC RES")
-                    self.instrumento.write(f"RES {valor}")
-                    self.instrumento.write("INPUT ON")
+            if self.selections['carga']:
+                addr = self.entries['carga_addr'].get()
+                inst = self.rm.open_resource(addr)
+                inst.timeout = 5000
+                self.instruments['carga'] = inst
+                log.append(f"Carga Conectada: {inst.query('*IDN?').strip()}")
+            
+            messagebox.showinfo("Conexão Bem-Sucedida", "\n".join(log))
+            self.btn_iniciar.config(state=tk.NORMAL)
+            self.label_status_geral.config(text="Status: Conectado. Pronto para iniciar.")
 
-                else:
-                    raise ValueError("Modo desconhecido")
+        except Exception as e:
+            messagebox.showerror("Erro de Conexão", f"Falha ao conectar com um ou mais dispositivos:\n{e}")
+            self.btn_iniciar.config(state=tk.DISABLED)
+            self.label_status_geral.config(text="Status: Falha na conexão.")
 
-                time.sleep(tempo_s)
+    def iniciar_sequencia(self):
+        threading.Thread(target=self.executar_sequencia, daemon=True).start()
 
-                self.instrumento.write("INPUT OFF")
+    def executar_sequencia(self):
+        self.btn_iniciar.config(state=tk.DISABLED)
+        self.btn_conectar.config(state=tk.DISABLED)
+        try:
+            num_etapas = 0
+            if 'fonte' in self.instruments:
+                num_etapas = max(num_etapas, len(self.etapas['fonte']))
+            if 'carga' in self.instruments:
+                num_etapas = max(num_etapas, len(self.etapas['carga']))
+            
+            if num_etapas == 0:
+                if 'multimetro' in self.instruments:
+                    valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
+                    self.labels['multimetro_leitura'].config(text=f"Tensão medida: {valor} V")
+                    self.label_status_geral.config(text="Status: Leitura do multímetro concluída.")
+                return
+
+            for i in range(num_etapas):
+                self.label_status_geral.config(text=f"Executando Etapa {i+1} de {num_etapas}...")
+
+                tempo_de_espera = 0
+                
+                # --- LÓGICA DA FONTE ---
+                if 'fonte' in self.instruments and i < len(self.etapas['fonte']):
+                    _, entry_v, entry_i, entry_t = self.etapas['fonte'][i]
+                    v = float(entry_v.get())
+                    i_limit = float(entry_i.get())
+                    tempo_de_espera = max(tempo_de_espera, float(entry_t.get()))
+                    self.instruments['fonte'].write(f"VOLT {v}")
+                    self.instruments['fonte'].write(f"CURR {i_limit}")
+                    self.instruments['fonte'].write("OUTP ON")
+                
+                # --- LÓGICA DA CARGA ---
+                if 'carga' in self.instruments and i < len(self.etapas['carga']):
+                    _, var_modo, entry_val, entry_tempo_carga = self.etapas['carga'][i]
+                    tempo_de_espera = max(tempo_de_espera, float(entry_tempo_carga.get()))
+                    modo_completo = var_modo.get()
+                    sigla = modo_completo.split('(')[1].replace(')', '')
+                    try:
+                        valor = float(entry_val.get())
+                    except ValueError:
+                        valor = 0
+                    cmd_map = {
+                        "CC": ("FUNC CURR", f"CURR {valor}"),
+                        "CV": ("FUNC VOLT", f"VOLT {valor}"),
+                        "CP": ("FUNC POW", f"POW {valor}"),
+                        "CR": ("FUNC RES", f"RES {valor}")
+                    }
+                    if sigla in cmd_map:
+                        self.instruments['carga'].write("*RST")
+                        self.instruments['carga'].write(cmd_map[sigla][0])
+                        self.instruments['carga'].write(cmd_map[sigla][1])
+                        self.instruments['carga'].write("INPUT ON")
+
+                # --- INÍCIO DO CONTADOR ---
+                inicio = time.time()
+
+                # --- LEITURA DO MULTÍMETRO ---
+                if 'multimetro' in self.instruments:
+                    try:
+                        valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
+                        self.labels['multimetro_leitura'].config(text=f"Tensão medida: {valor} V")
+                    except Exception as e:
+                        self.labels['multimetro_leitura'].config(text=f"Erro na leitura: {e}")
+
+                # --- AJUSTE PARA CUMPRIR O TEMPO EXATO DA ETAPA ---
+                tempo_passado = time.time() - inicio
+                tempo_restante = tempo_de_espera - tempo_passado
+                if tempo_restante > 0:
+                    time.sleep(tempo_restante)
+
+                # --- DESLIGA SAÍDAS ---
+                if 'fonte' in self.instruments:
+                    self.instruments['fonte'].write("OUTP OFF")
+                if 'carga' in self.instruments:
+                    self.instruments['carga'].write("INPUT OFF")
                 time.sleep(0.5)
 
-            self.label_status.config(text="Sequência finalizada. Saída desligada.")
+            self.label_status_geral.config(text="Status: Sequência finalizada. Saídas desligadas.")
+            
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro durante as etapas:\n{e}")
+            messagebox.showerror("Erro na Sequência", f"Ocorreu um erro durante a execução:\n{e}")
+            self.label_status_geral.config(text="Status: Erro na sequência.")
         finally:
             self.btn_iniciar.config(state=tk.NORMAL)
-            self.btn_mais_etapa.config(state=tk.NORMAL)
+            self.btn_conectar.config(state=tk.NORMAL)
 
     def on_close(self):
         try:
-            if self.instrumento:
-                self.instrumento.write("INPUT OFF")
+            if 'fonte' in self.instruments and self.instruments['fonte']:
+                self.instruments['fonte'].write("OUTP OFF")
+            if 'carga' in self.instruments and self.instruments['carga']:
+                self.instruments['carga'].write("INPUT OFF")
+            if 'multimetro' in self.instruments and self.instruments['multimetro']:
+                self.instruments['multimetro'].disconnect()
         except Exception as e:
-            print("Erro ao desligar a carga:", e)
-        self.master.deiconify()
-        self.destroy()
-
-# --------------- Execução principal ----------------
+            print(f"Erro ao desligar saídas na hora de fechar: {e}")
+        finally:
+            self.master.deiconify()
+            self.destroy()
 
 if __name__ == "__main__":
     app = MainWindow()
