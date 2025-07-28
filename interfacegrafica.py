@@ -5,7 +5,7 @@ import threading
 import time
 import socket
 
-# --- Classe para comunicação TCP socket com o multímetro Fluke ---
+# Classe para comunicação TCP socket com o multímetro Fluke 
 class FlukeSocket:
     def __init__(self, ip, port=3490, timeout=5):
         self.ip = ip
@@ -120,7 +120,7 @@ class CombinedControlWindow(tk.Toplevel):
         self.btn_voltar = tk.Button(control_frame, text="← Voltar", command=self.on_close)
         self.btn_voltar.pack(side=tk.BOTTOM, pady=10)
 
-    # ---------- MÉTODOS DE CRIAÇÃO DE UI ----------
+    # MÉTODOS DE CRIAÇÃO DE UI
     
     def _create_fonte_ui(self, parent):
         frame = ttk.LabelFrame(parent, text="Fonte de Alimentação (PWS4305)")
@@ -158,8 +158,17 @@ class CombinedControlWindow(tk.Toplevel):
         entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
         self.entries['multimetro_ip'] = entry_addr
 
-        self.labels['multimetro_leitura'] = tk.Label(frame, text="Tensão medida: ---", font=("Arial", 12))
-        self.labels['multimetro_leitura'].pack(pady=10)
+        # LINHAS ADICIONADAS PARA CORRIGIR O ERRO
+        leitura_frame = tk.Frame(frame)
+        leitura_frame.pack(pady=5, padx=5, fill='x')
+
+        # Cria o label que mostrará a tensão
+        label_leitura = tk.Label(leitura_frame, text="Última Leitura: -- V", font=("Arial", 11, "italic"))
+        label_leitura.pack()
+
+        # Guarda a referência do label no dicionário para ser acessado depois
+        self.labels['multimetro_leitura'] = label_leitura
+
         
     def _create_carga_ui(self, parent):
         frame = ttk.LabelFrame(parent, text="Carga Eletrônica")
@@ -185,7 +194,7 @@ class CombinedControlWindow(tk.Toplevel):
 
         self.adicionar_etapa_carga()
 
-    # ---------- MÉTODOS PARA ADICIONAR/REMOVER ETAPAS DINAMICAMENTE ----------
+    # MÉTODOS PARA ADICIONAR/REMOVER ETAPAS DINAMICAMENTE
 
     def adicionar_etapa_fonte(self): 
         frame = tk.Frame(self.frames['fonte_etapas'])
@@ -254,7 +263,7 @@ class CombinedControlWindow(tk.Toplevel):
             label_etapa = frame.winfo_children()[0]
             label_etapa.config(text=f"Etapa {i + 1}:")
 
-    # ---------- MÉTODOS DE CONTROLE E COMUNICAÇÃO VISA ----------
+    # MÉTODOS DE CONTROLE E COMUNICAÇÃO VISA 
 
     def buscar_enderecos(self, entry_widget):
         try:
@@ -345,7 +354,7 @@ class CombinedControlWindow(tk.Toplevel):
 
                 tempo_de_espera = 0
                 
-                # --- LÓGICA DA FONTE ---
+                # LÓGICA DA FONTE 
                 if 'fonte' in self.instruments and i < len(self.etapas['fonte']):
                     _, entry_v, entry_i, entry_t = self.etapas['fonte'][i]
                     v = float(entry_v.get())
@@ -355,7 +364,7 @@ class CombinedControlWindow(tk.Toplevel):
                     self.instruments['fonte'].write(f"CURR {i_limit}")
                     self.instruments['fonte'].write("OUTP ON")
                 
-                # --- LÓGICA DA CARGA ---
+                # LÓGICA DA CARGA 
                 if 'carga' in self.instruments and i < len(self.etapas['carga']):
                     _, var_modo, entry_val, entry_tempo_carga = self.etapas['carga'][i]
                     tempo_de_espera = max(tempo_de_espera, float(entry_tempo_carga.get()))
@@ -377,10 +386,10 @@ class CombinedControlWindow(tk.Toplevel):
                         self.instruments['carga'].write(cmd_map[sigla][1])
                         self.instruments['carga'].write("INPUT ON")
 
-                # --- INÍCIO DO CONTADOR ---
+                # INÍCIO DO CONTADOR 
                 inicio = time.time()
 
-                # --- LEITURA DO MULTÍMETRO ---
+                # LEITURA DO MULTÍMETRO
                 if 'multimetro' in self.instruments:
                     try:
                         valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
@@ -388,13 +397,13 @@ class CombinedControlWindow(tk.Toplevel):
                     except Exception as e:
                         self.labels['multimetro_leitura'].config(text=f"Erro na leitura: {e}")
 
-                # --- AJUSTE PARA CUMPRIR O TEMPO EXATO DA ETAPA ---
+                # AJUSTE PARA CUMPRIR O TEMPO EXATO DA ETAPA 
                 tempo_passado = time.time() - inicio
                 tempo_restante = tempo_de_espera - tempo_passado
                 if tempo_restante > 0:
                     time.sleep(tempo_restante)
 
-                # --- DESLIGA SAÍDAS ---
+                # DESLIGA SAÍDAS 
                 if 'fonte' in self.instruments:
                     self.instruments['fonte'].write("OUTP OFF")
                 if 'carga' in self.instruments:
