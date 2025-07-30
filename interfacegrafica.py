@@ -4,6 +4,8 @@ import pyvisa
 import threading
 import time
 import socket
+import csv
+
 
 # Classe para comunicação TCP socket com o multímetro Fluke 
 class FlukeSocket:
@@ -36,7 +38,9 @@ class FlukeSocket:
     
     def query(self, cmd):
         self.send_command(cmd)
+        time.sleep(0.2)  
         return self.receive_response()
+
 
 
 # JANELA PRINCIPAL DE SELEÇÃO
@@ -157,6 +161,19 @@ class CombinedControlWindow(tk.Toplevel):
         entry_addr.insert(0, "172.30.248.100")
         entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
         self.entries['multimetro_ip'] = entry_addr
+
+        tk.Label(frame, text="Intervalo (s):").pack(side=tk.LEFT, padx=(10, 0))
+        entry_intervalo = tk.Entry(frame, width=5)
+        entry_intervalo.insert(0, "1.0")
+        entry_intervalo.pack(side=tk.LEFT, padx=(0, 10))
+        self.entries['multimetro_intervalo'] = entry_intervalo
+
+        tk.Label(frame, text="Arquivo CSV:").pack(side=tk.LEFT)
+        entry_csv = tk.Entry(frame, width=20)
+        entry_csv.insert(0, "medicoes.csv")
+        entry_csv.pack(side=tk.LEFT, padx=5)
+        self.entries['multimetro_csv'] = entry_csv
+
 
         # LINHAS ADICIONADAS PARA CORRIGIR O ERRO
         leitura_frame = tk.Frame(frame)
@@ -304,7 +321,7 @@ class CombinedControlWindow(tk.Toplevel):
             
             if self.selections['multimetro']:
                 ip = self.entries['multimetro_ip'].get()
-                fluke = FlukeSocket(ip)
+                fluke = FlukeSocket(ip, timeout=15)
                 fluke.connect()
                 self.instruments['multimetro'] = fluke
                 try:
@@ -343,10 +360,18 @@ class CombinedControlWindow(tk.Toplevel):
                 num_etapas = max(num_etapas, len(self.etapas['carga']))
             
             if num_etapas == 0:
+                # Se só tiver multímetro, faz uma leitura simples
                 if 'multimetro' in self.instruments:
-                    valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
-                    self.labels['multimetro_leitura'].config(text=f"Tensão medida: {valor} V")
-                    self.label_status_geral.config(text="Status: Leitura do multímetro concluída.")
+                    try:
+                        valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
+                        valor = valor.strip()
+                        if not valor:
+                            raise ValueError("Resposta vazia do multímetro")
+                        self.labels['multimetro_leitura'].config(text=f"Tensão medida: {valor} V")
+                        self.label_status_geral.config(text="Status: Leitura do multímetro concluída.")
+                    except Exception as e:
+                        self.labels['multimetro_leitura'].config(text=f"Erro na leitura: {e}")
+                        print(f"Erro na leitura do multímetro: {e}")
                 return
 
             for i in range(num_etapas):
@@ -388,14 +413,57 @@ class CombinedControlWindow(tk.Toplevel):
 
                 # INÍCIO DO CONTADOR 
                 inicio = time.time()
+                tempo_passado = 0
 
-                # LEITURA DO MULTÍMETRO
-                if 'multimetro' in self.instruments:
-                    try:
-                        valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
-                        self.labels['multimetro_leitura'].config(text=f"Tensão medida: {valor} V")
-                    except Exception as e:
-                        self.labels['multimetro_leitura'].config(text=f"Erro na leitura: {e}")
+                # Pegando intervalo e nome do arquivo CSV
+                leitura_intervalo_str = self.entries.get('multimetro_intervalo', None)
+                csv_filename_str = self.entries.get('multimetro_csv', None)
+
+                # Garantindo que os valores estão definidos e convertidos corretamente
+                try:
+                    leitura_intervalo = float(leitura_intervalo_str.get()) if leitura_intervalo_str else 1.0
+                except Exception:
+                    leitura_intervalo = 1.0
+                
+                try:
+                    csv_filename = csv_filename_str.get() if csv_filename_str else "medicoes.csv"
+                except Exception:
+                    csv_filename = "medicoes.csv"
+
+                # Criação do CSV e escrita das leituras do multímetro durante a etapa
+                import csv  # caso não esteja importado no início do arquivo
+                
+                try:
+                    # Se o arquivo não existir, escreve cabeçalho, senão adiciona
+                    arquivo_existe = False
+                    import os
+                    if os.path.isfile(csv_filename):
+                        arquivo_existe = True
+
+                    with open(csv_filename, mode='a', newline='') as file:
+                        writer = csv.writer(file)
+                        if not arquivo_existe:
+                            writer.writerow(['Timestamp (s)', 'Etapa', 'Tensão (V)'])
+                        
+                        etapa_num = i + 1
+                        while tempo_passado < tempo_de_espera:
+                            timestamp = round(time.time() - inicio, 3)
+                            try:
+                                valor = self.instruments['multimetro'].query("MEAS:VOLT:DC?")
+                                valor = valor.strip()
+                                if not valor:
+                                    raise ValueError("Resposta vazia do multímetro")
+                                self.labels['multimetro_leitura'].config(text=f"Tensão medida: {valor} V")
+                                writer.writerow([timestamp, etapa_num, valor])
+                            except Exception as e:
+                                self.labels['multimetro_leitura'].config(text=f"Erro na leitura: {e}")
+                                print(f"Erro na leitura do multímetro na etapa {etapa_num}: {e}")
+                                writer.writerow([timestamp, etapa_num, "ERRO"])
+
+                            time.sleep(leitura_intervalo)
+                            tempo_passado = time.time() - inicio
+                except Exception as e:
+                    messagebox.showerror("Erro ao salvar CSV", f"Erro ao salvar medições no CSV:\n{e}")
 
                 # AJUSTE PARA CUMPRIR O TEMPO EXATO DA ETAPA 
                 tempo_passado = time.time() - inicio
@@ -418,6 +486,7 @@ class CombinedControlWindow(tk.Toplevel):
         finally:
             self.btn_iniciar.config(state=tk.NORMAL)
             self.btn_conectar.config(state=tk.NORMAL)
+
 
     def on_close(self):
         try:
