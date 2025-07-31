@@ -1,0 +1,16 @@
+Timestamp,Etapa,Tensao_Fonte_Config_V,Corrente_Fonte_Config_A,Modo_Carga_Config,Valor_Carga_Config,Tensao_Multimetro_V,Corrente_Multimetro_A
+2025-07-31 13:27:36.863,1,10.0,1.0,Resistência Constante (CR),100,9.990571,0.097561
+2025-07-31 13:27:37.863,1,10.0,1.0,Resistência Constante (CR),100,9.990875,0.097539
+2025-07-31 13:27:38.882,1,10.0,1.0,Resistência Constante (CR),100,9.990923,0.097571
+2025-07-31 13:27:39.883,1,10.0,1.0,Resistência Constante (CR),100,9.990937,0.097539
+2025-07-31 13:27:40.883,1,10.0,1.0,Resistência Constante (CR),100,9.990955,0.097532
+2025-07-31 13:27:42.422,2,20.0,1.0,Resistência Constante (CR),100,20.312070,0.193012
+2025-07-31 13:27:43.424,2,20.0,1.0,Resistência Constante (CR),100,20.312460,0.193051
+2025-07-31 13:27:44.423,2,20.0,1.0,Resistência Constante (CR),100,20.312530,0.193093
+2025-07-31 13:27:45.422,2,20.0,1.0,Resistência Constante (CR),100,20.312420,0.193082
+2025-07-31 13:27:46.424,2,20.0,1.0,Resistência Constante (CR),100,20.312600,0.193086
+2025-07-31 13:27:47.424,2,20.0,1.0,Resistência Constante (CR),100,20.312460,0.193075
+2025-07-31 13:27:48.423,2,20.0,1.0,Resistência Constante (CR),100,20.312530,0.193107
+2025-07-31 13:27:49.423,2,20.0,1.0,Resistência Constante (CR),100,20.312560,0.193012
+2025-07-31 13:27:50.423,2,20.0,1.0,Resistência Constante (CR),100,20.312530,0.193065
+2025-07-31 13:27:51.424,2,20.0,1.0,Resistência Constante (CR),100,20.312490,0.193036
