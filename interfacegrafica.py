@@ -42,8 +42,6 @@ class MainWindow(tk.Tk):
         control_window = CombinedControlWindow(self, selections)
         control_window.grab_set()
 
-
-# JANELA DE CONTROLE COMBINADO
 # JANELA DE CONTROLE COMBINADO
 class CombinedControlWindow(tk.Toplevel):
     def __init__(self, master, selections):
@@ -72,8 +70,6 @@ class CombinedControlWindow(tk.Toplevel):
 
         control_frame = tk.Frame(self)
         control_frame.pack(pady=10, fill='x', padx=10)
-
-        # REMOVIDO: Bloco de código que criava o timeout_frame e a entrada de texto
         
         self.btn_conectar = tk.Button(control_frame, text="Conectar Equipamentos", command=self.conectar_todos)
         self.btn_conectar.pack(pady=5)
@@ -146,12 +142,6 @@ class CombinedControlWindow(tk.Toplevel):
         entry_csv.insert(0, "medicoes.csv")
         entry_csv.pack(side=tk.LEFT, expand=True)
         self.entries['multimetro_csv'] = entry_csv
-        
-        leitura_frame = tk.Frame(frame)
-        leitura_frame.pack(pady=5, padx=5, fill='x')
-        label_leitura = tk.Label(leitura_frame, text="Última Leitura: --", font=("Arial", 11, "italic"))
-        label_leitura.pack()
-        self.labels['multimetro_leitura'] = label_leitura
 
     def _create_carga_ui(self, parent):
         frame = ttk.LabelFrame(parent, text="Carga Eletrônica")
@@ -381,7 +371,6 @@ class CombinedControlWindow(tk.Toplevel):
             num_etapas_carga = len(self.etapas['carga'])
             num_etapas_geral = max(num_etapas_fonte, num_etapas_carga)
 
-            # MODIFICADO: Variáveis movidas para fora do loop para persistir o estado
             v_set, i_set, modo_carga_set, valor_carga_set = "N/A", "N/A", "N/A", "N/A"
 
             for i in range(num_etapas_geral):
@@ -389,7 +378,6 @@ class CombinedControlWindow(tk.Toplevel):
                 fonte = self.instruments.get('fonte')
                 carga = self.instruments.get('carga')
                 multimetro = self.instruments.get('multimetro')
-                # REMOVIDO: A linha de reset foi movida para fora do loop
                 
                 self.label_status_geral.config(text=f"Configurando Etapa {etapa_num}...")
                 
@@ -463,11 +451,10 @@ class CombinedControlWindow(tk.Toplevel):
                     
                     if tensao_multi_str not in ["N/A", "ERRO"]: last_v = tensao_multi_str
                     if corrente_multi_str not in ["N/A", "ERRO"]: last_i = corrente_multi_str
-                    self.labels['multimetro_leitura'].config(text=f"Última Leitura: V: {last_v} / I: {last_i}")
                     
                     ui_status = f"Etapa {etapa_num}: "
-                    if medir_tensao: ui_status += f"V_m={last_v}V "
-                    if medir_corrente: ui_status += f"I_m={last_i}A "
+                    if medir_tensao: ui_status += f"V: {last_v}V "
+                    if medir_corrente: ui_status += f"I: {last_i}A "
                     self.label_status_geral.config(text=ui_status)
 
                     log_row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], etapa_num, v_set, i_set, modo_carga_set, valor_carga_set]
