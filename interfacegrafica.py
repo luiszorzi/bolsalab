@@ -43,6 +43,7 @@ class MainWindow(tk.Tk):
         control_window.grab_set()
 
 # JANELA DE CONTROLE COMBINADO
+# JANELA DE CONTROLE COMBINADO
 class CombinedControlWindow(tk.Toplevel):
     def __init__(self, master, selections):
         super().__init__(master)
@@ -57,6 +58,10 @@ class CombinedControlWindow(tk.Toplevel):
         self.etapas = {'fonte': [], 'carga': []}
         self.labels = {}
         self.frames = {}
+        
+        # ADICIONADO: Verifica se fonte e carga foram selecionadas juntas
+        # Esta variável será usada para montar o menu da carga dinamicamente
+        self.fonte_e_carga_juntas = self.selections['fonte'] and self.selections['carga']
 
         main_frame = tk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
@@ -245,7 +250,13 @@ class CombinedControlWindow(tk.Toplevel):
         
         tk.Label(frame, text=f"Etapa {len(self.etapas['carga']) + 1}:").pack(side=tk.LEFT, padx=5)
         var_modo = tk.StringVar(value="Resistência Constante (CR)")
-        modos = ["Corrente Constante (CC)", "Tensão Constante (CV)", "Potência Constante (CP)", "Resistência Constante (CR)"]
+        
+        if self.fonte_e_carga_juntas:
+            modos = ["Corrente Constante (CC)", "Potência Constante (CP)", "Resistência Constante (CR)"]
+        else:
+
+            modos = ["Corrente Constante (CC)", "Tensão Constante (CV)", "Potência Constante (CP)", "Resistência Constante (CR)"]
+        
         modo_menu = ttk.Combobox(frame, textvariable=var_modo, values=modos, width=25, state="readonly")
         modo_menu.pack(side=tk.LEFT, padx=5)
         
@@ -345,30 +356,31 @@ class CombinedControlWindow(tk.Toplevel):
                 self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                 return
 
-            for etapa_widgets in self.etapas['fonte']:
-                if etapa_widgets['volt_check_var'].get() and not medir_tensao:
-                    messagebox.showwarning("Configuração Inválida", "Gatilho por 'Tensão' exige que 'Medir Tensão' no multímetro esteja selecionado.")
-                    self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
-                    return
-                
-                if etapa_widgets['curr_check_var'].get() and not medir_corrente:
-                    messagebox.showwarning("Configuração Inválida", "Gatilho por 'Corrente' exige que 'Medir Corrente' no multímetro esteja selecionado.")
-                    self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
-                    return
+            if self.selections['fonte']:
+                for etapa_widgets in self.etapas['fonte']:
+                    if etapa_widgets['volt_check_var'].get() and not medir_tensao:
+                        messagebox.showwarning("Configuração Inválida", "Gatilho por 'Tensão' exige que 'Medir Tensão' no multímetro esteja selecionado.")
+                        self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
+                        return
+                    
+                    if etapa_widgets['curr_check_var'].get() and not medir_corrente:
+                        messagebox.showwarning("Configuração Inválida", "Gatilho por 'Corrente' exige que 'Medir Corrente' no multímetro esteja selecionado.")
+                        self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
+                        return
 
             # PREPARAÇÃO DO CSV
-            csv_header = ["Timestamp", "Etapa", "Tensao_Fonte_Config_V", "Corrente_Fonte_Config_A", "Modo_Carga_Config", "Valor_Carga_Config"]
+            csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
             if medir_tensao:
-                csv_header.append("Tensao_Multimetro_V")
+                csv_header.append("Tensao_Multimetro")
             if medir_corrente:
-                csv_header.append("Corrente_Multimetro_A")
+                csv_header.append("Corrente_Multimetro")
             
             with open(csv_filename, 'w', newline='', encoding='utf-8') as f:
                 csv.writer(f).writerow(csv_header)
 
             # LÓGICA PRINCIPAL
-            num_etapas_fonte = len(self.etapas['fonte'])
-            num_etapas_carga = len(self.etapas['carga'])
+            num_etapas_fonte = len(self.etapas['fonte']) if self.selections['fonte'] else 0
+            num_etapas_carga = len(self.etapas['carga']) if self.selections['carga'] else 0
             num_etapas_geral = max(num_etapas_fonte, num_etapas_carga)
 
             v_set, i_set, modo_carga_set, valor_carga_set = "N/A", "N/A", "N/A", "N/A"
@@ -396,14 +408,20 @@ class CombinedControlWindow(tk.Toplevel):
                     if carga:
                         sigla = modo_carga_set.split('(')[1].replace(')', '')
                         valor_carga_num = float(valor_carga_set) if valor_carga_set else 0
+                        
                         cmd_map = {"CC": ("CURR", f"CURR {valor_carga_num}"), "CV": ("VOLT", f"VOLT {valor_carga_num}"), 
                                    "CR": ("RES", f"RES {valor_carga_num}"), "CP": ("POW", f"POW {valor_carga_num}")}
+                        
                         if sigla in cmd_map:
                             carga.write(f"FUNC {cmd_map[sigla][0]}")
                             carga.write(cmd_map[sigla][1])
                 
+                # MODIFICADO: Ordem original restaurada e pausa adicionada para estabilização
                 if fonte:
                     fonte.write("OUTP ON")
+                
+                time.sleep(0.2) # <-- NOVA PAUSA de 200ms para a tensão da fonte estabilizar
+
                 if carga:
                     carga.write("INPUT ON")
                 
