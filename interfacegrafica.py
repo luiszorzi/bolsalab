@@ -11,13 +11,12 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 # JANELA PRINCIPAL DE SELEÇÃO
-class MainWindow(tk.Tk):
+class JanelaPrincipal(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Seleção de Equipamentos")
         self.geometry("350x250")
 
-        
         self.use_fonte = tk.BooleanVar(value=False)
         self.use_multimetro = tk.BooleanVar(value=False)
         self.use_carga = tk.BooleanVar(value=False)
@@ -43,11 +42,12 @@ class MainWindow(tk.Tk):
             return
 
         self.withdraw()
-        control_window = CombinedControlWindow(self, selections)
+        control_window = JanelaControleCombinado(self, selections)
         control_window.grab_set()
 
+
 # JANELA DE CONTROLE COMBINADO
-class CombinedControlWindow(tk.Toplevel):
+class JanelaControleCombinado(tk.Toplevel):
     def __init__(self, master, selections):
         super().__init__(master)
         self.title("Controle de Equipamentos")
@@ -185,7 +185,6 @@ class CombinedControlWindow(tk.Toplevel):
         for widget in widgets:
             widget.config(state=state)
 
-    # --- MÉTODO MODIFICADO ---
     def adicionar_etapa_fonte(self):
         etapa_idx = len(self.etapas['fonte'])
         etapa_frame = ttk.LabelFrame(self.frames['fonte_etapas'], text=f"Etapa {etapa_idx + 1}")
@@ -205,29 +204,25 @@ class CombinedControlWindow(tk.Toplevel):
         trigger_frame = tk.Frame(etapa_frame)
         trigger_frame.pack(pady=5, fill='x', padx=5)
         
-        # Variáveis de controle para as checkboxes
         time_check_var = tk.BooleanVar(value=True)
         volt_check_var = tk.BooleanVar(value=False)
         curr_check_var = tk.BooleanVar(value=False)
 
-        # Gatilho por Tempo
         time_check = tk.Checkbutton(trigger_frame, text="Duração (s):", variable=time_check_var)
         time_check.pack(side=tk.LEFT)
         entry_t = tk.Entry(trigger_frame, width=7)
         entry_t.insert(0, "5")
         entry_t.pack(side=tk.LEFT)
         
-        # Gatilho por Tensão
         volt_check = tk.Checkbutton(trigger_frame, text="Tensão:", variable=volt_check_var)
         volt_check.pack(side=tk.LEFT, padx=(15, 0))
-        volt_cond_var = tk.StringVar(value='<=')
+        volt_cond_var = tk.StringVar(value='>=')
         volt_cond_menu = ttk.Combobox(trigger_frame, textvariable=volt_cond_var, values=['>=', '<='], width=3, state=tk.DISABLED)
         volt_cond_menu.pack(side=tk.LEFT)
         entry_vt = tk.Entry(trigger_frame, width=7, state=tk.DISABLED)
         entry_vt.insert(0, "9.5")
         entry_vt.pack(side=tk.LEFT)
         
-        # Gatilho por Corrente
         curr_check = tk.Checkbutton(trigger_frame, text="Corrente:", variable=curr_check_var)
         curr_check.pack(side=tk.LEFT, padx=(15, 0))
         curr_cond_var = tk.StringVar(value='>=')
@@ -237,23 +232,19 @@ class CombinedControlWindow(tk.Toplevel):
         entry_ct.insert(0, "0.1")
         entry_ct.pack(side=tk.LEFT)
         
-        # Função para garantir seleção mútua exclusiva
         def update_trigger_selection(selected_var, other_var1, other_var2):
             if selected_var.get():
                 other_var1.set(False)
                 other_var2.set(False)
             
-            # Atualiza o estado de todos os widgets de entrada
             self._toggle_entry_state(time_check_var, entry_t)
             self._toggle_entry_state(volt_check_var, volt_cond_menu, entry_vt)
             self._toggle_entry_state(curr_check_var, curr_cond_menu, entry_ct)
 
-        # Configura o comando de cada checkbox para chamar a função de atualização
         time_check.config(command=lambda: update_trigger_selection(time_check_var, volt_check_var, curr_check_var))
         volt_check.config(command=lambda: update_trigger_selection(volt_check_var, time_check_var, curr_check_var))
         curr_check.config(command=lambda: update_trigger_selection(curr_check_var, time_check_var, volt_check_var))
         
-        # Armazena os widgets para uso posterior
         widgets = {
             'frame': etapa_frame, 'v_entry': entry_v, 'i_entry': entry_i,
             'time_check_var': time_check_var, 'time_entry': entry_t,
@@ -281,7 +272,6 @@ class CombinedControlWindow(tk.Toplevel):
         if self.fonte_e_carga_juntas:
             modos = ["Corrente Constante (CC)", "Potência Constante (CP)", "Resistência Constante (CR)"]
         else:
-
             modos = ["Corrente Constante (CC)", "Tensão Constante (CV)", "Potência Constante (CP)", "Resistência Constante (CR)"]
         
         modo_menu = ttk.Combobox(frame, textvariable=var_modo, values=modos, width=25, state="readonly")
@@ -572,9 +562,9 @@ class CombinedControlWindow(tk.Toplevel):
         corrente_disponivel = 'Corrente_Multimetro' in data.columns and self.curr_meas_var.get()
 
         if not tensao_disponivel and not corrente_disponivel:
-             messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente do multímetro para plotar.")
-             plot_window.destroy()
-             return
+                 messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente do multímetro para plotar.")
+                 plot_window.destroy()
+                 return
 
         if tensao_disponivel:
             ax1 = fig.add_subplot(211 if corrente_disponivel else 111)
@@ -616,5 +606,5 @@ class CombinedControlWindow(tk.Toplevel):
             self.destroy()
 
 if __name__ == "__main__":
-    app = MainWindow()
+    app = JanelaPrincipal()
     app.mainloop()
