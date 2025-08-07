@@ -51,8 +51,14 @@ class JanelaControleCombinado(tk.Toplevel):
     def __init__(self, master, selections):
         super().__init__(master)
         self.title("Controle de Equipamentos")
-        self.geometry("800x880")
+        self.geometry("880x920") 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        self.font_titulo = ("Segoe UI", 12, "bold")
+        self.font_corpo = ("Segoe UI", 11)
+        
+        style = ttk.Style(self)
+        style.configure("TLabelFrame.Label", font=self.font_titulo)
 
         self.selections = selections
         self.rm = pyvisa.ResourceManager()
@@ -77,16 +83,16 @@ class JanelaControleCombinado(tk.Toplevel):
         control_frame = tk.Frame(self)
         control_frame.pack(pady=10, fill='x', padx=10)
         
-        self.btn_conectar = tk.Button(control_frame, text="Conectar Equipamentos", command=self.conectar_todos)
+        self.btn_conectar = tk.Button(control_frame, text="Conectar Equipamentos", command=self.conectar_todos, font=self.font_corpo)
         self.btn_conectar.pack(pady=5)
 
-        self.btn_iniciar = tk.Button(control_frame, text="Iniciar Sequência", command=self.iniciar_sequencia, state=tk.DISABLED)
+        self.btn_iniciar = tk.Button(control_frame, text="Iniciar Sequência", command=self.iniciar_sequencia, state=tk.DISABLED, font=self.font_corpo)
         self.btn_iniciar.pack(pady=5)
 
-        self.label_status_geral = tk.Label(control_frame, text="Status: Aguardando conexão...", font=("Arial", 12))
+        self.label_status_geral = tk.Label(control_frame, text="Status: Aguardando conexão...", font=("Segoe UI", 12))
         self.label_status_geral.pack(pady=10)
 
-        self.btn_voltar = tk.Button(control_frame, text="← Voltar", command=self.on_close)
+        self.btn_voltar = tk.Button(control_frame, text="← Voltar", command=self.on_close, font=self.font_corpo)
         self.btn_voltar.pack(side=tk.BOTTOM, pady=10)
 
     def _create_fonte_ui(self, parent):
@@ -96,11 +102,11 @@ class JanelaControleCombinado(tk.Toplevel):
 
         addr_frame = tk.Frame(frame)
         addr_frame.pack(pady=5, fill='x', padx=5)
-        tk.Label(addr_frame, text="Endereço VISA:").pack(side=tk.LEFT)
-        entry_addr = tk.Entry(addr_frame, width=40)
+        tk.Label(addr_frame, text="Endereço VISA:", font=self.font_corpo).pack(side=tk.LEFT)
+        entry_addr = tk.Entry(addr_frame, width=40, font=self.font_corpo)
         entry_addr.insert(0, "USB0::0x0699::0x0392::C010658::INSTR")
         entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
-        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr)).pack(side=tk.LEFT)
+        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr), font=self.font_corpo).pack(side=tk.LEFT)
         self.entries['fonte_addr'] = entry_addr
 
         self.frames['fonte_etapas'] = tk.Frame(frame)
@@ -108,8 +114,8 @@ class JanelaControleCombinado(tk.Toplevel):
 
         botoes_etapa_frame = tk.Frame(frame)
         botoes_etapa_frame.pack(pady=5)
-        tk.Button(botoes_etapa_frame, text="+ Adicionar Etapa", command=self.adicionar_etapa_fonte).pack(side=tk.LEFT, padx=5)
-        tk.Button(botoes_etapa_frame, text="- Remover Etapa", command=self.remover_etapa_fonte).pack(side=tk.LEFT, padx=5)
+        tk.Button(botoes_etapa_frame, text="+ Adicionar Etapa", command=self.adicionar_etapa_fonte, font=self.font_corpo).pack(side=tk.LEFT, padx=5)
+        tk.Button(botoes_etapa_frame, text="- Remover Etapa", command=self.remover_etapa_fonte, font=self.font_corpo).pack(side=tk.LEFT, padx=5)
         
         self.adicionar_etapa_fonte()
 
@@ -119,11 +125,11 @@ class JanelaControleCombinado(tk.Toplevel):
         
         addr_frame = tk.Frame(frame)
         addr_frame.pack(pady=5, fill='x', padx=5)
-        tk.Label(addr_frame, text="Endereço VISA:").pack(side=tk.LEFT)
-        entry_addr = tk.Entry(addr_frame, width=40)
+        tk.Label(addr_frame, text="Endereço VISA:", font=self.font_corpo).pack(side=tk.LEFT)
+        entry_addr = tk.Entry(addr_frame, width=40, font=self.font_corpo)
         entry_addr.insert(0, "TCPIP0::172.30.248.100::3490::SOCKET")
         entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
-        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr)).pack(side=tk.LEFT)
+        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr), font=self.font_corpo).pack(side=tk.LEFT)
         self.entries['multimetro_addr'] = entry_addr
         
         config_frame = tk.Frame(frame)
@@ -132,28 +138,35 @@ class JanelaControleCombinado(tk.Toplevel):
         self.volt_meas_var = tk.BooleanVar(value=True)
         self.curr_meas_var = tk.BooleanVar(value=True)
         
-        tk.Checkbutton(config_frame, text="Medir Tensão", variable=self.volt_meas_var).pack(side=tk.LEFT, padx=5)
-        tk.Checkbutton(config_frame, text="Medir Corrente", variable=self.curr_meas_var).pack(side=tk.LEFT, padx=5)
+        tk.Checkbutton(config_frame, text="Medir Tensão", variable=self.volt_meas_var, font=self.font_corpo).pack(side=tk.LEFT, padx=5)
+        tk.Checkbutton(config_frame, text="Medir Corrente", variable=self.curr_meas_var, font=self.font_corpo).pack(side=tk.LEFT, padx=5)
         
         ttk.Separator(config_frame, orient='vertical').pack(side=tk.LEFT, fill='y', padx=10, pady=5)
         
-        tk.Label(config_frame, text="Intervalo (s):").pack(side=tk.LEFT, padx=(0,5))
-        entry_intervalo = tk.Entry(config_frame, width=8)
+        tk.Label(config_frame, text="Intervalo (s):", font=self.font_corpo).pack(side=tk.LEFT, padx=(0,5))
+        entry_intervalo = tk.Entry(config_frame, width=8, font=self.font_corpo)
         entry_intervalo.insert(0, "1.0")
         entry_intervalo.pack(side=tk.LEFT)
         self.entries['multimetro_intervalo'] = entry_intervalo
         
-        tk.Label(config_frame, text="Nome do Arquivo:").pack(side=tk.LEFT, padx=(10,5))
-        entry_csv = tk.Entry(config_frame, width=25)
-        entry_csv.insert(0, "medicoes.csv")
-        entry_csv.pack(side=tk.LEFT, expand=True)
-        self.entries['multimetro_csv'] = entry_csv
+        tk.Label(config_frame, text="Nome do Arquivo:", font=self.font_corpo).pack(side=tk.LEFT, padx=(10,5))
+        
+        # Frame para agrupar o campo de entrada e o rótulo .csv
+        filename_frame = tk.Frame(config_frame)
+        filename_frame.pack(side=tk.LEFT, expand=True, fill='x')
+
+        entry_csv_name = tk.Entry(filename_frame, width=20, font=self.font_corpo)
+        entry_csv_name.insert(0, "medicoes") # Inserimos apenas o nome base
+        entry_csv_name.pack(side=tk.LEFT)
+        self.entries['multimetro_csv_name'] = entry_csv_name # Usamos uma nova chave no dicionário
+
+        tk.Label(filename_frame, text=".csv", font=self.font_corpo).pack(side=tk.LEFT)
 
         plot_frame = tk.Frame(frame)
         plot_frame.pack(pady=10, padx=5, fill='x')
         
         self.plot_var = tk.BooleanVar(value=True)
-        plot_check = tk.Checkbutton(plot_frame, text="Gerar gráficos", variable=self.plot_var)
+        plot_check = tk.Checkbutton(plot_frame, text="Gerar gráficos", variable=self.plot_var, font=self.font_corpo)
         plot_check.pack(anchor='w')
 
     def _create_carga_ui(self, parent):
@@ -163,11 +176,11 @@ class JanelaControleCombinado(tk.Toplevel):
         
         addr_frame = tk.Frame(frame)
         addr_frame.pack(pady=5, fill='x', padx=5)
-        tk.Label(addr_frame, text="Endereço VISA:").pack(side=tk.LEFT)
-        entry_addr = tk.Entry(addr_frame, width=40)
+        tk.Label(addr_frame, text="Endereço VISA:", font=self.font_corpo).pack(side=tk.LEFT)
+        entry_addr = tk.Entry(addr_frame, width=40, font=self.font_corpo)
         entry_addr.insert(0, "USB0::0x05E6::0x2380::802436052757810021::INSTR")
         entry_addr.pack(side=tk.LEFT, padx=5, expand=True)
-        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr)).pack(side=tk.LEFT)
+        tk.Button(addr_frame, text="Buscar", command=lambda: self.buscar_enderecos(entry_addr), font=self.font_corpo).pack(side=tk.LEFT)
         self.entries['carga_addr'] = entry_addr
         
         self.frames['carga_etapas'] = tk.Frame(frame)
@@ -175,8 +188,8 @@ class JanelaControleCombinado(tk.Toplevel):
         
         botoes_etapa_frame = tk.Frame(frame)
         botoes_etapa_frame.pack(pady=5)
-        tk.Button(botoes_etapa_frame, text="+ Adicionar Etapa", command=self.adicionar_etapa_carga).pack(side=tk.LEFT, padx=5)
-        tk.Button(botoes_etapa_frame, text="- Remover Etapa", command=self.remover_etapa_carga).pack(side=tk.LEFT, padx=5)
+        tk.Button(botoes_etapa_frame, text="+ Adicionar Etapa", command=self.adicionar_etapa_carga, font=self.font_corpo).pack(side=tk.LEFT, padx=5)
+        tk.Button(botoes_etapa_frame, text="- Remover Etapa", command=self.remover_etapa_carga, font=self.font_corpo).pack(side=tk.LEFT, padx=5)
         
         self.adicionar_etapa_carga()
 
@@ -192,12 +205,12 @@ class JanelaControleCombinado(tk.Toplevel):
         
         config_frame = tk.Frame(etapa_frame)
         config_frame.pack(pady=5, fill='x', padx=5)
-        tk.Label(config_frame, text="Tensão (V):").pack(side=tk.LEFT)
-        entry_v = tk.Entry(config_frame, width=7)
+        tk.Label(config_frame, text="Tensão (V):", font=self.font_corpo).pack(side=tk.LEFT)
+        entry_v = tk.Entry(config_frame, width=7, font=self.font_corpo)
         entry_v.insert(0, "10.0")
         entry_v.pack(side=tk.LEFT, padx=(0, 10))
-        tk.Label(config_frame, text="Corrente (A):").pack(side=tk.LEFT)
-        entry_i = tk.Entry(config_frame, width=7)
+        tk.Label(config_frame, text="Corrente (A):", font=self.font_corpo).pack(side=tk.LEFT)
+        entry_i = tk.Entry(config_frame, width=7, font=self.font_corpo)
         entry_i.insert(0, "1.0")
         entry_i.pack(side=tk.LEFT)
         
@@ -208,29 +221,33 @@ class JanelaControleCombinado(tk.Toplevel):
         volt_check_var = tk.BooleanVar(value=False)
         curr_check_var = tk.BooleanVar(value=False)
 
-        time_check = tk.Checkbutton(trigger_frame, text="Duração (s):", variable=time_check_var)
+        time_check = tk.Checkbutton(trigger_frame, text="Duração (s):", variable=time_check_var, font=self.font_corpo)
         time_check.pack(side=tk.LEFT)
-        entry_t = tk.Entry(trigger_frame, width=7)
+        entry_t = tk.Entry(trigger_frame, width=7, font=self.font_corpo)
         entry_t.insert(0, "5")
         entry_t.pack(side=tk.LEFT)
         
-        volt_check = tk.Checkbutton(trigger_frame, text="Tensão:", variable=volt_check_var)
+        volt_check = tk.Checkbutton(trigger_frame, text="Tensão:", variable=volt_check_var, font=self.font_corpo)
         volt_check.pack(side=tk.LEFT, padx=(15, 0))
         volt_cond_var = tk.StringVar(value='>=')
-        volt_cond_menu = ttk.Combobox(trigger_frame, textvariable=volt_cond_var, values=['>=', '<='], width=3, state=tk.DISABLED)
+        volt_cond_menu = ttk.Combobox(trigger_frame, textvariable=volt_cond_var, values=['>=', '<='], width=3, state=tk.DISABLED, font=self.font_corpo)
         volt_cond_menu.pack(side=tk.LEFT)
-        entry_vt = tk.Entry(trigger_frame, width=7, state=tk.DISABLED)
+        entry_vt = tk.Entry(trigger_frame, width=7, state=tk.DISABLED, font=self.font_corpo)
         entry_vt.insert(0, "9.5")
         entry_vt.pack(side=tk.LEFT)
         
-        curr_check = tk.Checkbutton(trigger_frame, text="Corrente:", variable=curr_check_var)
+        curr_check = tk.Checkbutton(trigger_frame, text="Corrente:", variable=curr_check_var, font=self.font_corpo)
         curr_check.pack(side=tk.LEFT, padx=(15, 0))
         curr_cond_var = tk.StringVar(value='>=')
-        curr_cond_menu = ttk.Combobox(trigger_frame, textvariable=curr_cond_var, values=['>=', '<='], width=3, state=tk.DISABLED)
+        curr_cond_menu = ttk.Combobox(trigger_frame, textvariable=curr_cond_var, values=['>=', '<='], width=3, state=tk.DISABLED, font=self.font_corpo)
         curr_cond_menu.pack(side=tk.LEFT)
-        entry_ct = tk.Entry(trigger_frame, width=7, state=tk.DISABLED)
-        entry_ct.insert(0, "0.1")
+        entry_ct = tk.Entry(trigger_frame, width=7, state=tk.DISABLED, font=self.font_corpo)
+        entry_ct.insert(0, "100")
         entry_ct.pack(side=tk.LEFT)
+
+        curr_unit_var = tk.StringVar(value='mA')
+        curr_unit_menu = ttk.Combobox(trigger_frame, textvariable=curr_unit_var, values=['A', 'mA'], width=3, state=tk.DISABLED, font=self.font_corpo)
+        curr_unit_menu.pack(side=tk.LEFT, padx=(2,0))
         
         def update_trigger_selection(selected_var, other_var1, other_var2):
             if selected_var.get():
@@ -239,7 +256,7 @@ class JanelaControleCombinado(tk.Toplevel):
             
             self._toggle_entry_state(time_check_var, entry_t)
             self._toggle_entry_state(volt_check_var, volt_cond_menu, entry_vt)
-            self._toggle_entry_state(curr_check_var, curr_cond_menu, entry_ct)
+            self._toggle_entry_state(curr_check_var, curr_cond_menu, entry_ct, curr_unit_menu)
 
         time_check.config(command=lambda: update_trigger_selection(time_check_var, volt_check_var, curr_check_var))
         volt_check.config(command=lambda: update_trigger_selection(volt_check_var, time_check_var, curr_check_var))
@@ -250,6 +267,7 @@ class JanelaControleCombinado(tk.Toplevel):
             'time_check_var': time_check_var, 'time_entry': entry_t,
             'volt_check_var': volt_check_var, 'volt_cond_var': volt_cond_var, 'volt_target_entry': entry_vt,
             'curr_check_var': curr_check_var, 'curr_cond_var': curr_cond_var, 'curr_target_entry': entry_ct,
+            'curr_unit_var': curr_unit_var,
         }
         self.etapas['fonte'].append(widgets)
 
@@ -264,9 +282,9 @@ class JanelaControleCombinado(tk.Toplevel):
 
     def adicionar_etapa_carga(self,):
         frame = tk.Frame(self.frames['carga_etapas'])
-        frame.pack(pady=2)
+        frame.pack(pady=2, fill='x')
         
-        tk.Label(frame, text=f"Etapa {len(self.etapas['carga']) + 1}:").pack(side=tk.LEFT, padx=5)
+        tk.Label(frame, text=f"Etapa {len(self.etapas['carga']) + 1}:", font=self.font_corpo).pack(side=tk.LEFT, padx=5)
         var_modo = tk.StringVar(value="Resistência Constante (CR)")
         
         if self.fonte_e_carga_juntas:
@@ -274,10 +292,10 @@ class JanelaControleCombinado(tk.Toplevel):
         else:
             modos = ["Corrente Constante (CC)", "Tensão Constante (CV)", "Potência Constante (CP)", "Resistência Constante (CR)"]
         
-        modo_menu = ttk.Combobox(frame, textvariable=var_modo, values=modos, width=25, state="readonly")
+        modo_menu = ttk.Combobox(frame, textvariable=var_modo, values=modos, width=25, state="readonly", font=self.font_corpo)
         modo_menu.pack(side=tk.LEFT, padx=5)
         
-        entry_val = tk.Entry(frame, width=8)
+        entry_val = tk.Entry(frame, width=8, font=self.font_corpo)
         entry_val.insert(0, "100")
         entry_val.pack(side=tk.LEFT, padx=5)
         
@@ -305,7 +323,7 @@ class JanelaControleCombinado(tk.Toplevel):
             janela_lista.grab_set()
             
             tk.Label(janela_lista, text="Selecione um endereço:", font=("Arial", 12)).pack(pady=5)
-            lista = tk.Listbox(janela_lista, width=60)
+            lista = tk.Listbox(janela_lista, width=60, font=self.font_corpo)
             lista.pack(pady=5, padx=5, fill='both', expand=True)
             
             for r in recursos:
@@ -317,7 +335,7 @@ class JanelaControleCombinado(tk.Toplevel):
                 entry_widget.insert(0, selecionado)
                 janela_lista.destroy()
                 
-            tk.Button(janela_lista, text="Selecionar", command=selecionar).pack(pady=5)
+            tk.Button(janela_lista, text="Selecionar", command=selecionar, font=self.font_corpo).pack(pady=5)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao buscar dispositivos:\n{e}")
 
@@ -361,15 +379,28 @@ class JanelaControleCombinado(tk.Toplevel):
         self.btn_conectar.config(state=tk.DISABLED)
         
         try:
-            intervalo_medicao = float(self.entries['multimetro_intervalo'].get())
-            csv_filename = self.entries['multimetro_csv'].get()
-            medir_tensao = self.volt_meas_var.get()
-            medir_corrente = self.curr_meas_var.get()
+            intervalo_medicao = 1.0
+            csv_filename = ""
+            medir_tensao = False
+            medir_corrente = False
 
-            if self.selections['multimetro'] and not medir_tensao and not medir_corrente:
-                messagebox.showwarning("Configuração Inválida", "Nenhum modo de medição (Tensão/Corrente) selecionado para o multímetro.")
-                self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
-                return
+            if self.selections['multimetro']:
+                intervalo_medicao = float(self.entries['multimetro_intervalo'].get())
+                
+                base_name = self.entries['multimetro_csv_name'].get().strip()
+                if not base_name:
+                    messagebox.showwarning("Nome Inválido", "O nome do arquivo CSV não pode estar em branco.")
+                    self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
+                    return
+                csv_filename = f"{base_name}.csv"
+
+                medir_tensao = self.volt_meas_var.get()
+                medir_corrente = self.curr_meas_var.get()
+
+                if not medir_tensao and not medir_corrente:
+                    messagebox.showwarning("Configuração Inválida", "Nenhum modo de medição (Tensão/Corrente) selecionado para o multímetro.")
+                    self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
+                    return
 
             if self.selections['fonte']:
                 for etapa_widgets in self.etapas['fonte']:
@@ -382,21 +413,27 @@ class JanelaControleCombinado(tk.Toplevel):
                         messagebox.showwarning("Configuração Inválida", "Gatilho por 'Corrente' exige que 'Medir Corrente' no multímetro esteja selecionado.")
                         self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                         return
-
-            csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
-            if medir_tensao:
-                csv_header.append("Tensao_Multimetro")
-            if medir_corrente:
-                csv_header.append("Corrente_Multimetro")
             
-            with open(csv_filename, 'w', newline='', encoding='utf-8') as f:
-                csv.writer(f).writerow(csv_header)
+            if self.selections['multimetro']:
+                csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
+                if medir_tensao:
+                    csv_header.append("Tensao_Multimetro")
+                if medir_corrente:
+                    csv_header.append("Corrente_Multimetro")
+                
+                with open(csv_filename, 'w', newline='', encoding='utf-8') as f:
+                    csv.writer(f).writerow(csv_header)
 
             num_etapas_fonte = len(self.etapas['fonte']) if self.selections['fonte'] else 0
             num_etapas_carga = len(self.etapas['carga']) if self.selections['carga'] else 0
             num_etapas_geral = max(num_etapas_fonte, num_etapas_carga)
 
-            v_set, i_set, modo_carga_set, valor_carga_set = "N/A", "N/A", "N/A", "N/A"
+            if num_etapas_geral == 0:
+                 messagebox.showinfo("Aviso", "Nenhuma etapa configurada para fonte ou carga. Nada a fazer.")
+                 self.label_status_geral.config(text="Status: Nenhuma etapa para executar.")
+                 self.btn_iniciar.config(state=tk.NORMAL)
+                 self.btn_conectar.config(state=tk.NORMAL)
+                 return
 
             for i in range(num_etapas_geral):
                 etapa_num = i + 1
@@ -406,6 +443,8 @@ class JanelaControleCombinado(tk.Toplevel):
                 
                 self.label_status_geral.config(text=f"Configurando Etapa {etapa_num}...")
                 
+                v_set, i_set, modo_carga_set, valor_carga_set = "N/A", "N/A", "N/A", "N/A"
+
                 if i < num_etapas_fonte:
                     etapa_widgets_fonte = self.etapas['fonte'][i]
                     v_set = float(etapa_widgets_fonte['v_entry'].get())
@@ -437,6 +476,9 @@ class JanelaControleCombinado(tk.Toplevel):
                 if carga:
                     carga.write("INPUT ON")
                 
+                self.label_status_geral.config(text=f"Estabilizando Etapa {etapa_num}...")
+                time.sleep(2.0) # Pausa de 1 segundo.
+
                 start_time = time.time()
                 last_v, last_i = "N/A", "N/A"
 
@@ -446,7 +488,7 @@ class JanelaControleCombinado(tk.Toplevel):
                     
                     stop_condition_met = False
                     
-                    if not stop_condition_met and i < num_etapas_fonte:
+                    if self.selections['fonte'] and i < num_etapas_fonte:
                         etapa_widgets_fonte = self.etapas['fonte'][i]
                         try:
                             if etapa_widgets_fonte['time_check_var'].get():
@@ -460,7 +502,7 @@ class JanelaControleCombinado(tk.Toplevel):
                         break
 
                     tensao_multi_str, corrente_multi_str = "N/A", "N/A"
-                    if multimetro:
+                    if multimetro and self.selections['multimetro']:
                         try:
                             if medir_tensao:
                                 multimetro.write("CONF:VOLT:DC")
@@ -487,25 +529,44 @@ class JanelaControleCombinado(tk.Toplevel):
                     if medir_corrente: ui_status += f"I: {last_i}A "
                     self.label_status_geral.config(text=ui_status)
 
-                    log_row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], etapa_num, v_set, i_set, modo_carga_set, valor_carga_set]
-                    if medir_tensao: log_row.append(tensao_multi_str)
-                    if medir_corrente: log_row.append(corrente_multi_str)
-                    with open(csv_filename, 'a', newline='', encoding='utf-8') as f:
-                        csv.writer(f).writerow(log_row)
+                    if self.selections['multimetro']:
+                        log_row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], etapa_num, v_set, i_set, modo_carga_set, valor_carga_set]
+                        if medir_tensao: log_row.append(tensao_multi_str)
+                        if medir_corrente: log_row.append(corrente_multi_str)
+                        with open(csv_filename, 'a', newline='', encoding='utf-8') as f:
+                            csv.writer(f).writerow(log_row)
 
-                    if i < num_etapas_fonte:
+                    if self.selections['fonte'] and self.selections['multimetro'] and i < num_etapas_fonte:
                         etapa_widgets_fonte = self.etapas['fonte'][i]
                         try:
                             if etapa_widgets_fonte['volt_check_var'].get() and tensao_multi_str not in ["N/A", "ERRO"]:
                                 alvo, cond = float(etapa_widgets_fonte['volt_target_entry'].get()), etapa_widgets_fonte['volt_cond_var'].get()
                                 if (cond == '>=' and float(tensao_multi_str) >= alvo) or (cond == '<=' and float(tensao_multi_str) <= alvo):
                                     break 
+                            
                             if etapa_widgets_fonte['curr_check_var'].get() and corrente_multi_str not in ["N/A", "ERRO"]:
-                                alvo, cond = float(etapa_widgets_fonte['curr_target_entry'].get()), etapa_widgets_fonte['curr_cond_var'].get()
-                                if (cond == '>=' and float(corrente_multi_str) >= alvo) or (cond == '<=' and float(corrente_multi_str) <= alvo):
+                                alvo_str = etapa_widgets_fonte['curr_target_entry'].get()
+                                unit = etapa_widgets_fonte['curr_unit_var'].get()
+                                cond = etapa_widgets_fonte['curr_cond_var'].get()
+                                
+                                alvo_numerico = float(alvo_str)
+                                
+                                if unit == 'mA':
+                                    alvo_a = alvo_numerico / 1000.0
+                                else:
+                                    alvo_a = alvo_numerico
+                                
+                                if (cond == '>=' and float(corrente_multi_str) >= alvo_a) or \
+                                   (cond == '<=' and float(corrente_multi_str) <= alvo_a):
                                     break
                         except (ValueError, TypeError):
                             pass
+
+                    if self.selections['fonte'] and i < num_etapas_fonte:
+                         etapa_widgets_fonte = self.etapas['fonte'][i]
+                         if not etapa_widgets_fonte['time_check_var'].get() and not etapa_widgets_fonte['volt_check_var'].get() and not etapa_widgets_fonte['curr_check_var'].get():
+                             messagebox.showwarning("Loop Infinito", f"Etapa {etapa_num} da fonte não possui uma condição de parada (duração, tensão ou corrente). A etapa será pulada.")
+                             break 
                     
                     elapsed_in_loop = time.time() - loop_start_time
                     sleep_duration = intervalo_medicao - elapsed_in_loop
@@ -518,7 +579,10 @@ class JanelaControleCombinado(tk.Toplevel):
                 self.label_status_geral.config(text=f"Etapa {etapa_num} concluída.")
                 time.sleep(0.5)
 
-            self.label_status_geral.config(text=f"Status: Sequência finalizada. Dados salvos em '{csv_filename}'.")
+            final_message = "Sequência finalizada."
+            if self.selections['multimetro'] and csv_filename:
+                final_message += f" Dados salvos em '{csv_filename}'."
+            self.label_status_geral.config(text=f"Status: {final_message}")
         
         except Exception as e:
             messagebox.showerror("Erro na Sequência", f"Ocorreu um erro durante a execução:\n{e}")
@@ -532,8 +596,7 @@ class JanelaControleCombinado(tk.Toplevel):
             self.btn_iniciar.config(state=tk.NORMAL)
             self.btn_conectar.config(state=tk.NORMAL)
             
-            if self.selections['multimetro'] and self.plot_var.get():
-                csv_filename = self.entries['multimetro_csv'].get()
+            if self.selections['multimetro'] and self.plot_var.get() and csv_filename:
                 self.after(0, self.plotar_graficos, csv_filename)
 
     def plotar_graficos(self, csv_filename):
@@ -562,9 +625,9 @@ class JanelaControleCombinado(tk.Toplevel):
         corrente_disponivel = 'Corrente_Multimetro' in data.columns and self.curr_meas_var.get()
 
         if not tensao_disponivel and not corrente_disponivel:
-                 messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente do multímetro para plotar.")
-                 plot_window.destroy()
-                 return
+                    messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente do multímetro para plotar.")
+                    plot_window.destroy()
+                    return
 
         if tensao_disponivel:
             ax1 = fig.add_subplot(211 if corrente_disponivel else 111)
