@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import os
 
 # JANELA PRINCIPAL DE SELEÇÃO
 class JanelaPrincipal(tk.Tk):
@@ -151,14 +152,13 @@ class JanelaControleCombinado(tk.Toplevel):
         
         tk.Label(config_frame, text="Nome do Arquivo:", font=self.font_corpo).pack(side=tk.LEFT, padx=(10,5))
         
-        # Frame para agrupar o campo de entrada e o rótulo .csv
         filename_frame = tk.Frame(config_frame)
         filename_frame.pack(side=tk.LEFT, expand=True, fill='x')
 
         entry_csv_name = tk.Entry(filename_frame, width=20, font=self.font_corpo)
-        entry_csv_name.insert(0, "medicoes") # Inserimos apenas o nome base
+        entry_csv_name.insert(0, "medicoes")
         entry_csv_name.pack(side=tk.LEFT)
-        self.entries['multimetro_csv_name'] = entry_csv_name # Usamos uma nova chave no dicionário
+        self.entries['multimetro_csv_name'] = entry_csv_name
 
         tk.Label(filename_frame, text=".csv", font=self.font_corpo).pack(side=tk.LEFT)
 
@@ -326,15 +326,21 @@ class JanelaControleCombinado(tk.Toplevel):
             lista = tk.Listbox(janela_lista, width=60, font=self.font_corpo)
             lista.pack(pady=5, padx=5, fill='both', expand=True)
             
-            for r in recursos:
-                lista.insert(tk.END, r)
+            # Filtra a lista para mostrar apenas os recursos que interessam
+            recursos_filtrados = [r for r in recursos if r.startswith('USB') or r.startswith('TCPIP')]
+
+            for r in recursos_filtrados:
+                lista.insert(tk.END, r) # Adiciona apenas os recursos filtrados
                 
             def selecionar():
-                selecionado = lista.get(tk.ACTIVE)
-                entry_widget.delete(0, tk.END)
-                entry_widget.insert(0, selecionado)
-                janela_lista.destroy()
-                
+                if lista.curselection(): # Evita erro se nada for selecionado
+                    selecionado = lista.get(tk.ACTIVE)
+                    entry_widget.delete(0, tk.END)
+                    entry_widget.insert(0, selecionado)
+                    janela_lista.destroy()
+                else:
+                    janela_lista.destroy()
+                    
             tk.Button(janela_lista, text="Selecionar", command=selecionar, font=self.font_corpo).pack(pady=5)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao buscar dispositivos:\n{e}")
@@ -378,9 +384,12 @@ class JanelaControleCombinado(tk.Toplevel):
         self.btn_iniciar.config(state=tk.DISABLED)
         self.btn_conectar.config(state=tk.DISABLED)
         
+        csv_file = None
+        csv_writer = None
+        csv_filename = ""
+        
         try:
             intervalo_medicao = 1.0
-            csv_filename = ""
             medir_tensao = False
             medir_corrente = False
 
@@ -392,25 +401,30 @@ class JanelaControleCombinado(tk.Toplevel):
                     messagebox.showwarning("Nome Inválido", "O nome do arquivo CSV não pode estar em branco.")
                     self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                     return
-                csv_filename = f"{base_name}.csv"
+                
+                try:
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                except NameError:
+                    script_dir = os.getcwd()
+                
+                csv_filename = os.path.join(script_dir, f"{base_name}.csv")
 
                 medir_tensao = self.volt_meas_var.get()
                 medir_corrente = self.curr_meas_var.get()
 
                 if not medir_tensao and not medir_corrente:
-                    messagebox.showwarning("Configuração Inválida", "Nenhum modo de medição (Tensão/Corrente) selecionado para o multímetro.")
+                    messagebox.showwarning("Configuração Inválida", "Nenhum modo de medição selecionado.")
                     self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                     return
 
             if self.selections['fonte']:
                 for etapa_widgets in self.etapas['fonte']:
                     if etapa_widgets['volt_check_var'].get() and not medir_tensao:
-                        messagebox.showwarning("Configuração Inválida", "Gatilho por 'Tensão' exige que 'Medir Tensão' no multímetro esteja selecionado.")
+                        messagebox.showwarning("Configuração Inválida", "Gatilho de Tensão exige medição de Tensão.")
                         self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                         return
-                    
                     if etapa_widgets['curr_check_var'].get() and not medir_corrente:
-                        messagebox.showwarning("Configuração Inválida", "Gatilho por 'Corrente' exige que 'Medir Corrente' no multímetro esteja selecionado.")
+                        messagebox.showwarning("Configuração Inválida", "Gatilho de Corrente exige medição de Corrente.")
                         self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                         return
             
@@ -421,19 +435,20 @@ class JanelaControleCombinado(tk.Toplevel):
                 if medir_corrente:
                     csv_header.append("Corrente_Multimetro")
                 
-                with open(csv_filename, 'w', newline='', encoding='utf-8') as f:
-                    csv.writer(f).writerow(csv_header)
+                csv_file = open(csv_filename, 'w', newline='', encoding='utf-8')
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow(csv_header)
+                csv_file.flush()
+                os.fsync(csv_file.fileno())
 
             num_etapas_fonte = len(self.etapas['fonte']) if self.selections['fonte'] else 0
             num_etapas_carga = len(self.etapas['carga']) if self.selections['carga'] else 0
             num_etapas_geral = max(num_etapas_fonte, num_etapas_carga)
 
             if num_etapas_geral == 0:
-                 messagebox.showinfo("Aviso", "Nenhuma etapa configurada para fonte ou carga. Nada a fazer.")
-                 self.label_status_geral.config(text="Status: Nenhuma etapa para executar.")
-                 self.btn_iniciar.config(state=tk.NORMAL)
-                 self.btn_conectar.config(state=tk.NORMAL)
-                 return
+                messagebox.showinfo("Aviso", "Nenhuma etapa configurada.")
+                self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
+                return
 
             for i in range(num_etapas_geral):
                 etapa_num = i + 1
@@ -460,24 +475,17 @@ class JanelaControleCombinado(tk.Toplevel):
                     if carga:
                         sigla = modo_carga_set.split('(')[1].replace(')', '')
                         valor_carga_num = float(valor_carga_set) if valor_carga_set else 0
-                        
                         cmd_map = {"CC": ("CURR", f"CURR {valor_carga_num}"), "CV": ("VOLT", f"VOLT {valor_carga_num}"), 
                                    "CR": ("RES", f"RES {valor_carga_num}"), "CP": ("POW", f"POW {valor_carga_num}")}
-                        
                         if sigla in cmd_map:
                             carga.write(f"FUNC {cmd_map[sigla][0]}")
                             carga.write(cmd_map[sigla][1])
                 
-                if fonte:
-                    fonte.write("OUTP ON")
-                
+                if fonte: fonte.write("OUTP ON")
                 time.sleep(0.2) 
-
-                if carga:
-                    carga.write("INPUT ON")
+                if carga: carga.write("INPUT ON")
                 
-                self.label_status_geral.config(text=f"Estabilizando Etapa {etapa_num}...")
-                time.sleep(2.0) # Pausa de 1 segundo.
+                self.label_status_geral.config(text=f"Estabilizando Etapa {etapa_num}")
 
                 start_time = time.time()
                 last_v, last_i = "N/A", "N/A"
@@ -495,17 +503,15 @@ class JanelaControleCombinado(tk.Toplevel):
                                 duracao_fonte = float(etapa_widgets_fonte['time_entry'].get())
                                 if current_elapsed_time >= duracao_fonte:
                                     stop_condition_met = True
-                        except (ValueError, TypeError):
-                            pass
+                        except (ValueError, TypeError): pass
                     
-                    if stop_condition_met:
-                        break
+                    if stop_condition_met: break
 
                     tensao_multi_str, corrente_multi_str = "N/A", "N/A"
                     if multimetro and self.selections['multimetro']:
                         try:
                             if medir_tensao:
-                                multimetro.write("CONF:VOLT:DC")
+                                multimetro.write("CONF:VOLT:DC 100")
                                 multimetro.write("INIT")
                                 valor_bruto_v = multimetro.query("FETCH?").strip().split(',')[0]
                                 valor_numerico_v = float(valor_bruto_v)
@@ -529,12 +535,14 @@ class JanelaControleCombinado(tk.Toplevel):
                     if medir_corrente: ui_status += f"I: {last_i}A "
                     self.label_status_geral.config(text=ui_status)
 
-                    if self.selections['multimetro']:
+                    if csv_writer:
                         log_row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], etapa_num, v_set, i_set, modo_carga_set, valor_carga_set]
                         if medir_tensao: log_row.append(tensao_multi_str)
                         if medir_corrente: log_row.append(corrente_multi_str)
-                        with open(csv_filename, 'a', newline='', encoding='utf-8') as f:
-                            csv.writer(f).writerow(log_row)
+                        
+                        csv_writer.writerow(log_row)
+                        csv_file.flush()
+                        os.fsync(csv_file.fileno())
 
                     if self.selections['fonte'] and self.selections['multimetro'] and i < num_etapas_fonte:
                         etapa_widgets_fonte = self.etapas['fonte'][i]
@@ -543,30 +551,20 @@ class JanelaControleCombinado(tk.Toplevel):
                                 alvo, cond = float(etapa_widgets_fonte['volt_target_entry'].get()), etapa_widgets_fonte['volt_cond_var'].get()
                                 if (cond == '>=' and float(tensao_multi_str) >= alvo) or (cond == '<=' and float(tensao_multi_str) <= alvo):
                                     break 
-                            
                             if etapa_widgets_fonte['curr_check_var'].get() and corrente_multi_str not in ["N/A", "ERRO"]:
-                                alvo_str = etapa_widgets_fonte['curr_target_entry'].get()
-                                unit = etapa_widgets_fonte['curr_unit_var'].get()
-                                cond = etapa_widgets_fonte['curr_cond_var'].get()
-                                
+                                alvo_str, unit, cond = etapa_widgets_fonte['curr_target_entry'].get(), etapa_widgets_fonte['curr_unit_var'].get(), etapa_widgets_fonte['curr_cond_var'].get()
                                 alvo_numerico = float(alvo_str)
-                                
-                                if unit == 'mA':
-                                    alvo_a = alvo_numerico / 1000.0
-                                else:
-                                    alvo_a = alvo_numerico
-                                
+                                alvo_a = alvo_numerico / 1000.0 if unit == 'mA' else alvo_numerico
                                 if (cond == '>=' and float(corrente_multi_str) >= alvo_a) or \
                                    (cond == '<=' and float(corrente_multi_str) <= alvo_a):
                                     break
-                        except (ValueError, TypeError):
-                            pass
+                        except (ValueError, TypeError): pass
 
                     if self.selections['fonte'] and i < num_etapas_fonte:
-                         etapa_widgets_fonte = self.etapas['fonte'][i]
-                         if not etapa_widgets_fonte['time_check_var'].get() and not etapa_widgets_fonte['volt_check_var'].get() and not etapa_widgets_fonte['curr_check_var'].get():
-                             messagebox.showwarning("Loop Infinito", f"Etapa {etapa_num} da fonte não possui uma condição de parada (duração, tensão ou corrente). A etapa será pulada.")
-                             break 
+                        etapa_widgets_fonte = self.etapas['fonte'][i]
+                        if not etapa_widgets_fonte['time_check_var'].get() and not etapa_widgets_fonte['volt_check_var'].get() and not etapa_widgets_fonte['curr_check_var'].get():
+                            messagebox.showwarning("Loop Infinito", f"Etapa {etapa_num} da fonte não possui condição de parada. A etapa será pulada.")
+                            break 
                     
                     elapsed_in_loop = time.time() - loop_start_time
                     sleep_duration = intervalo_medicao - elapsed_in_loop
@@ -581,18 +579,20 @@ class JanelaControleCombinado(tk.Toplevel):
 
             final_message = "Sequência finalizada."
             if self.selections['multimetro'] and csv_filename:
-                final_message += f" Dados salvos em '{csv_filename}'."
+                final_message += f" Dados salvos em '{os.path.basename(csv_filename)}'."
             self.label_status_geral.config(text=f"Status: {final_message}")
         
         except Exception as e:
             messagebox.showerror("Erro na Sequência", f"Ocorreu um erro durante a execução:\n{e}")
             self.label_status_geral.config(text="Status: Erro na sequência.")
         finally:
+            if csv_file:
+                csv_file.close()
+            
             try:
                 if 'fonte' in self.instruments and self.instruments.get('fonte'): self.instruments['fonte'].write("OUTP OFF")
                 if 'carga' in self.instruments and self.instruments.get('carga'): self.instruments['carga'].write("INPUT OFF")
-            except Exception:
-                pass
+            except Exception: pass
             self.btn_iniciar.config(state=tk.NORMAL)
             self.btn_conectar.config(state=tk.NORMAL)
             
@@ -603,17 +603,14 @@ class JanelaControleCombinado(tk.Toplevel):
         try:
             data = pd.read_csv(csv_filename)
             if data.empty:
-                messagebox.showwarning("Gráfico", "O arquivo de dados está vazio. Nenhum gráfico será gerado.")
+                messagebox.showwarning("Gráfico", "O arquivo de dados está vazio.")
                 return
-        except FileNotFoundError:
-            messagebox.showerror("Gráfico", f"Arquivo '{csv_filename}' não encontrado.")
-            return
         except Exception as e:
-            messagebox.showerror("Gráfico", f"Erro ao ler o arquivo de dados:\n{e}")
+            messagebox.showerror("Gráfico", f"Erro ao ler arquivo de dados:\n{e}")
             return
             
         plot_window = tk.Toplevel(self)
-        plot_window.title(f"Gráficos - {csv_filename}")
+        plot_window.title(f"Gráficos - {os.path.basename(csv_filename)}")
         plot_window.geometry("1000x800")
         plot_window.grab_set()
 
@@ -625,9 +622,9 @@ class JanelaControleCombinado(tk.Toplevel):
         corrente_disponivel = 'Corrente_Multimetro' in data.columns and self.curr_meas_var.get()
 
         if not tensao_disponivel and not corrente_disponivel:
-                    messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente do multímetro para plotar.")
-                    plot_window.destroy()
-                    return
+            messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente para plotar.")
+            plot_window.destroy()
+            return
 
         if tensao_disponivel:
             ax1 = fig.add_subplot(211 if corrente_disponivel else 111)
