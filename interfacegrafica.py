@@ -402,12 +402,12 @@ class JanelaControleCombinado(tk.Toplevel):
                     self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                     return
                 
-                try:
-                    script_dir = os.path.dirname(os.path.abspath(__file__))
-                except NameError:
-                    script_dir = os.getcwd()
-                
-                csv_filename = os.path.join(script_dir, f"{base_name}.csv")
+                # Define o caminho para a pasta "Documentos" do usuário atual
+                documentos_dir = os.path.join(os.path.expanduser('~'), 'Documents')
+
+                os.makedirs(documentos_dir, exist_ok=True)
+                csv_filename = os.path.join(documentos_dir, f"{base_name}.csv")
+
 
                 medir_tensao = self.volt_meas_var.get()
                 medir_corrente = self.curr_meas_var.get()
@@ -504,7 +504,7 @@ class JanelaControleCombinado(tk.Toplevel):
                                 if current_elapsed_time >= duracao_fonte:
                                     stop_condition_met = True
                         except (ValueError, TypeError): pass
-                    
+                
                     if stop_condition_met: break
 
                     tensao_multi_str, corrente_multi_str = "N/A", "N/A"
@@ -579,7 +579,8 @@ class JanelaControleCombinado(tk.Toplevel):
 
             final_message = "Sequência finalizada."
             if self.selections['multimetro'] and csv_filename:
-                final_message += f" Dados salvos em '{os.path.basename(csv_filename)}'."
+                # << MUDANÇA NA MENSAGEM FINAL >>
+                final_message += f" Dados salvos em sua pasta de Documentos ('{os.path.basename(csv_filename)}')."
             self.label_status_geral.config(text=f"Status: {final_message}")
         
         except Exception as e:
