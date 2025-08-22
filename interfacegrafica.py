@@ -330,10 +330,10 @@ class JanelaControleCombinado(tk.Toplevel):
             recursos_filtrados = [r for r in recursos if r.startswith('USB') or r.startswith('TCPIP')]
 
             for r in recursos_filtrados:
-                lista.insert(tk.END, r) # Adiciona apenas os recursos filtrados
+                lista.insert(tk.END, r) 
                 
             def selecionar():
-                if lista.curselection(): # Evita erro se nada for selecionado
+                if lista.curselection(): 
                     selecionado = lista.get(tk.ACTIVE)
                     entry_widget.delete(0, tk.END)
                     entry_widget.insert(0, selecionado)
@@ -394,7 +394,7 @@ class JanelaControleCombinado(tk.Toplevel):
             medir_corrente = False
 
             if self.selections['multimetro']:
-                intervalo_medicao = float(self.entries['multimetro_intervalo'].get())
+                intervalo_medicao = float(self.entries['multimetro_intervalo'].get()) 
                 
                 base_name = self.entries['multimetro_csv_name'].get().strip()
                 if not base_name:
@@ -402,12 +402,9 @@ class JanelaControleCombinado(tk.Toplevel):
                     self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                     return
                 
-                # Define o caminho para a pasta "Documentos" do usuário atual
                 documentos_dir = os.path.join(os.path.expanduser('~'), 'Documents')
-
                 os.makedirs(documentos_dir, exist_ok=True)
                 csv_filename = os.path.join(documentos_dir, f"{base_name}.csv")
-
 
                 medir_tensao = self.volt_meas_var.get()
                 medir_corrente = self.curr_meas_var.get()
@@ -440,7 +437,7 @@ class JanelaControleCombinado(tk.Toplevel):
                 csv_writer.writerow(csv_header)
                 csv_file.flush()
                 os.fsync(csv_file.fileno())
-
+                
             num_etapas_fonte = len(self.etapas['fonte']) if self.selections['fonte'] else 0
             num_etapas_carga = len(self.etapas['carga']) if self.selections['carga'] else 0
             num_etapas_geral = max(num_etapas_fonte, num_etapas_carga)
@@ -450,6 +447,8 @@ class JanelaControleCombinado(tk.Toplevel):
                 self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                 return
 
+            self.current_volt_range = 100 
+            
             for i in range(num_etapas_geral):
                 etapa_num = i + 1
                 fonte = self.instruments.get('fonte')
@@ -504,24 +503,30 @@ class JanelaControleCombinado(tk.Toplevel):
                                 if current_elapsed_time >= duracao_fonte:
                                     stop_condition_met = True
                         except (ValueError, TypeError): pass
-                
+            
                     if stop_condition_met: break
 
                     tensao_multi_str, corrente_multi_str = "N/A", "N/A"
                     if multimetro and self.selections['multimetro']:
                         try:
                             if medir_tensao:
-                                multimetro.write("CONF:VOLT:DC 100")
+                                multimetro.write(f"CONF:VOLT:DC {self.current_volt_range}")
                                 multimetro.write("INIT")
                                 valor_bruto_v = multimetro.query("FETCH?").strip().split(',')[0]
                                 valor_numerico_v = float(valor_bruto_v)
-                                tensao_multi_str = f"{valor_numerico_v:.6f}"
+                                tensao_multi_str = f"{valor_numerico_v:.5f}"
+                                
+                                if valor_numerico_v < 10.0:
+                                    self.current_volt_range = 10
+                                else:
+                                    self.current_volt_range = 100
+                                
                             if medir_corrente:
                                 multimetro.write("CONF:CURR:DC 10")
                                 multimetro.write("INIT")
                                 valor_bruto_i = multimetro.query("FETCH?").strip().split(',')[0]
                                 valor_numerico_i = float(valor_bruto_i)
-                                corrente_multi_str = f"{valor_numerico_i:.6f}"
+                                corrente_multi_str = f"{valor_numerico_i:.5f}"
                         except Exception as e:
                             print(f"Erro de comunicação com o multímetro: {e}")
                             if medir_tensao: tensao_multi_str = "ERRO"
@@ -579,10 +584,9 @@ class JanelaControleCombinado(tk.Toplevel):
 
             final_message = "Sequência finalizada."
             if self.selections['multimetro'] and csv_filename:
-                # << MUDANÇA NA MENSAGEM FINAL >>
                 final_message += f" Dados salvos em sua pasta de Documentos ('{os.path.basename(csv_filename)}')."
             self.label_status_geral.config(text=f"Status: {final_message}")
-        
+    
         except Exception as e:
             messagebox.showerror("Erro na Sequência", f"Ocorreu um erro durante a execução:\n{e}")
             self.label_status_geral.config(text="Status: Erro na sequência.")
