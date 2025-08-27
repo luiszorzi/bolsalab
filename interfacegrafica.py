@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import os
-import queue
 import matplotlib.animation as animation
+import numpy as np # Necessário para np.nan
 
 # JANELA PRINCIPAL DE SELEÇÃO
 class JanelaPrincipal(tk.Tk):
@@ -73,10 +73,13 @@ class JanelaControleCombinado(tk.Toplevel):
         
         self.fonte_e_carga_juntas = self.selections['fonte'] and self.selections['carga']
         
-        # Fila para comunicação entre a thread de medição e a thread da GUI
-        self.data_queue = queue.Queue()
         self.animation = None
         self.plot_window = None
+
+        # Listas para armazenar todo o histórico da medição atual
+        self.historico_timestamps = []
+        self.historico_tensao = []
+        self.historico_corrente = []
 
         main_frame = tk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
@@ -96,6 +99,9 @@ class JanelaControleCombinado(tk.Toplevel):
 
         self.btn_iniciar = tk.Button(control_frame, text="Iniciar Sequência", command=self.iniciar_sequencia, state=tk.DISABLED, font=self.font_corpo)
         self.btn_iniciar.pack(pady=5)
+        
+        self.btn_abrir_grafico = tk.Button(control_frame, text="Abrir Gráfico em Tempo Real", command=self.abrir_grafico_realtime, state=tk.DISABLED, font=self.font_corpo)
+        self.btn_abrir_grafico.pack(pady=5)
 
         self.label_status_geral = tk.Label(control_frame, text="Status: Aguardando conexão...", font=("Segoe UI", 12))
         self.label_status_geral.pack(pady=10)
@@ -383,6 +389,17 @@ class JanelaControleCombinado(tk.Toplevel):
             self.btn_iniciar.config(state=tk.DISABLED)
             self.label_status_geral.config(text="Status: Falha na conexão.")
 
+    def abrir_grafico_realtime(self):
+        if self.plot_window:
+            self.plot_window.lift()
+            return
+
+        self.csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
+        if self.volt_meas_var.get(): self.csv_header.append("Tensao_Multimetro")
+        if self.curr_meas_var.get(): self.csv_header.append("Corrente_Multimetro")
+        
+        self._setup_realtime_plot()
+
     def _setup_realtime_plot(self):
         self.plot_window = tk.Toplevel(self)
         self.plot_window.title("Gráfico em Tempo Real")
@@ -392,7 +409,9 @@ class JanelaControleCombinado(tk.Toplevel):
 
         self.fig = Figure(figsize=(10, 8), dpi=100)
         
-        self.timestamps, self.tensao_data, self.corrente_data = [], [], []
+        self.plot_timestamps = self.historico_timestamps.copy()
+        self.plot_tensao_data = self.historico_tensao.copy()
+        self.plot_corrente_data = self.historico_corrente.copy()
 
         tensao_disponivel = 'Tensao_Multimetro' in self.csv_header
         corrente_disponivel = 'Corrente_Multimetro' in self.csv_header
@@ -405,7 +424,7 @@ class JanelaControleCombinado(tk.Toplevel):
         
         if tensao_disponivel:
             self.ax1 = self.fig.add_subplot(num_plots, 1, plot_index)
-            self.line1, = self.ax1.plot([], [], marker='.', linestyle='-', label='Tensão (V)')
+            self.line1, = self.ax1.plot(self.plot_timestamps, self.plot_tensao_data, marker='.', linestyle='-', label='Tensão (V)')
             self.ax1.set_title("Medições de Tensão vs. Tempo")
             self.ax1.set_ylabel("Tensão (V)")
             self.ax1.grid(True)
@@ -414,7 +433,7 @@ class JanelaControleCombinado(tk.Toplevel):
 
         if corrente_disponivel:
             self.ax2 = self.fig.add_subplot(num_plots, 1, plot_index)
-            self.line2, = self.ax2.plot([], [], marker='.', linestyle='-', color='r', label='Corrente (A)')
+            self.line2, = self.ax2.plot(self.plot_timestamps, self.plot_corrente_data, marker='.', linestyle='-', color='r', label='Corrente (A)')
             self.ax2.set_title("Medições de Corrente vs. Tempo")
             self.ax2.set_ylabel("Corrente (A)")
             self.ax2.grid(True)
@@ -433,29 +452,31 @@ class JanelaControleCombinado(tk.Toplevel):
 
     def _update_plot(self, frame):
         try:
-            while not self.data_queue.empty():
-                data_point = self.data_queue.get()
+            pontos_ja_plotados = len(self.plot_timestamps)
+            
+            if len(self.historico_timestamps) > pontos_ja_plotados:
+                novos_timestamps = self.historico_timestamps[pontos_ja_plotados:]
+                novas_tensoes = self.historico_tensao[pontos_ja_plotados:]
+                novas_correntes = self.historico_corrente[pontos_ja_plotados:]
+
+                self.plot_timestamps.extend(novos_timestamps)
+                self.plot_tensao_data.extend(novas_tensoes)
+                self.plot_corrente_data.extend(novas_correntes)
                 
-                self.timestamps.append(data_point['timestamp'])
-                
-                if self.ax1 and 'tensao' in data_point:
-                    self.tensao_data.append(data_point['tensao'])
-                    self.line1.set_data(self.timestamps, self.tensao_data)
+                if self.ax1:
+                    self.line1.set_data(self.plot_timestamps, self.plot_tensao_data)
                     self.ax1.relim()
                     self.ax1.autoscale_view()
 
-                if self.ax2 and 'corrente' in data_point:
-                    self.corrente_data.append(data_point['corrente'])
-                    self.line2.set_data(self.timestamps, self.corrente_data)
+                if self.ax2:
+                    self.line2.set_data(self.plot_timestamps, self.plot_corrente_data)
                     self.ax2.relim()
                     self.ax2.autoscale_view()
             
-            # Necessário para redesenhar o canvas
-            if self.plot_window:
-                self.fig.canvas.draw_idle()
+                if self.plot_window:
+                    self.fig.canvas.draw_idle()
         except Exception as e:
             print(f"Erro ao atualizar o gráfico: {e}")
-
 
     def _on_plot_close(self):
         if self.animation:
@@ -466,17 +487,25 @@ class JanelaControleCombinado(tk.Toplevel):
             self.plot_window = None
 
     def iniciar_sequencia(self):
-        if self.selections['multimetro'] and self.plot_var.get():
-            self.csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
-            if self.volt_meas_var.get(): self.csv_header.append("Tensao_Multimetro")
-            if self.curr_meas_var.get(): self.csv_header.append("Corrente_Multimetro")
-            self._setup_realtime_plot()
-            
+        # Limpa o histórico antes de cada nova sequência
+        self.historico_timestamps.clear()
+        self.historico_tensao.clear()
+        self.historico_corrente.clear()
+
+        # Reseta o estao e texto do botão do gráficdo
+        self.btn_abrir_grafico.config(state=tk.DISABLED, text="Abrir Gráfico em Tempo Real")
+        
+        # Fecha a janela do gráfico anterior, se estiver aberta
+        if self.plot_window:
+            self._on_plot_close()
+
         threading.Thread(target=self.executar_sequencia, daemon=True).start()
 
     def executar_sequencia(self):
         self.btn_iniciar.config(state=tk.DISABLED)
         self.btn_conectar.config(state=tk.DISABLED)
+        if self.selections['multimetro'] and self.plot_var.get():
+            self.btn_abrir_grafico.config(state=tk.NORMAL)
         
         csv_file = None
         csv_writer = None
@@ -567,7 +596,7 @@ class JanelaControleCombinado(tk.Toplevel):
                         sigla = modo_carga_set.split('(')[1].replace(')', '')
                         valor_carga_num = float(valor_carga_set) if valor_carga_set else 0
                         cmd_map = {"CC": ("CURR", f"CURR {valor_carga_num}"), "CV": ("VOLT", f"VOLT {valor_carga_num}"), 
-                                   "CR": ("RES", f"RES {valor_carga_num}"), "CP": ("POW", f"POW {valor_carga_num}")}
+                                    "CR": ("RES", f"RES {valor_carga_num}"), "CP": ("POW", f"POW {valor_carga_num}")}
                         if sigla in cmd_map:
                             carga.write(f"FUNC {cmd_map[sigla][0]}")
                             carga.write(cmd_map[sigla][1])
@@ -627,11 +656,12 @@ class JanelaControleCombinado(tk.Toplevel):
                             if medir_corrente: corrente_multi_str = "ERRO"
                     
                     if self.plot_var.get() and self.selections['multimetro']:
-                        data_point = {'timestamp': datetime.datetime.now()}
-                        if valor_numerico_v is not None: data_point['tensao'] = valor_numerico_v
-                        if valor_numerico_i is not None: data_point['corrente'] = valor_numerico_i
-                        if len(data_point) > 1:
-                            self.data_queue.put(data_point)
+                        self.historico_timestamps.append(datetime.datetime.now())
+                        
+                        if medir_tensao:
+                            self.historico_tensao.append(valor_numerico_v if valor_numerico_v is not None else np.nan)
+                        if medir_corrente:
+                            self.historico_corrente.append(valor_numerico_i if valor_numerico_i is not None else np.nan)
 
                     if tensao_multi_str not in ["N/A", "ERRO"]: last_v = tensao_multi_str
                     if corrente_multi_str not in ["N/A", "ERRO"]: last_i = corrente_multi_str
@@ -662,7 +692,7 @@ class JanelaControleCombinado(tk.Toplevel):
                                 alvo_numerico = float(alvo_str)
                                 alvo_a = alvo_numerico / 1000.0 if unit == 'mA' else alvo_numerico
                                 if (cond == '>=' and float(corrente_multi_str) >= alvo_a) or \
-                                   (cond == '<=' and float(corrente_multi_str) <= alvo_a):
+                                    (cond == '<=' and float(corrente_multi_str) <= alvo_a):
                                     break
                         except (ValueError, TypeError): pass
 
@@ -702,6 +732,11 @@ class JanelaControleCombinado(tk.Toplevel):
             
             self.btn_iniciar.config(state=tk.NORMAL)
             self.btn_conectar.config(state=tk.NORMAL)
+            
+            if self.historico_timestamps:
+                self.btn_abrir_grafico.config(state=tk.NORMAL, text="Ver Gráfico do Resultado")
+            else:
+                self.btn_abrir_grafico.config(state=tk.DISABLED)
 
     def on_close(self):
         try:
