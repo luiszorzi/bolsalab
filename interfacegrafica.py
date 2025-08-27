@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import os
+import queue
+import matplotlib.animation as animation
 
 # JANELA PRINCIPAL DE SELEÇÃO
 class JanelaPrincipal(tk.Tk):
@@ -70,6 +72,11 @@ class JanelaControleCombinado(tk.Toplevel):
         self.frames = {}
         
         self.fonte_e_carga_juntas = self.selections['fonte'] and self.selections['carga']
+        
+        # Fila para comunicação entre a thread de medição e a thread da GUI
+        self.data_queue = queue.Queue()
+        self.animation = None
+        self.plot_window = None
 
         main_frame = tk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill='both', expand=True)
@@ -326,7 +333,6 @@ class JanelaControleCombinado(tk.Toplevel):
             lista = tk.Listbox(janela_lista, width=60, font=self.font_corpo)
             lista.pack(pady=5, padx=5, fill='both', expand=True)
             
-            # Filtra a lista para mostrar apenas os recursos que interessam
             recursos_filtrados = [r for r in recursos if r.startswith('USB') or r.startswith('TCPIP')]
 
             for r in recursos_filtrados:
@@ -377,7 +383,95 @@ class JanelaControleCombinado(tk.Toplevel):
             self.btn_iniciar.config(state=tk.DISABLED)
             self.label_status_geral.config(text="Status: Falha na conexão.")
 
+    def _setup_realtime_plot(self):
+        self.plot_window = tk.Toplevel(self)
+        self.plot_window.title("Gráfico em Tempo Real")
+        self.plot_window.geometry("1000x800")
+        
+        self.plot_window.protocol("WM_DELETE_WINDOW", self._on_plot_close)
+
+        self.fig = Figure(figsize=(10, 8), dpi=100)
+        
+        self.timestamps, self.tensao_data, self.corrente_data = [], [], []
+
+        tensao_disponivel = 'Tensao_Multimetro' in self.csv_header
+        corrente_disponivel = 'Corrente_Multimetro' in self.csv_header
+        
+        num_plots = int(tensao_disponivel) + int(corrente_disponivel)
+        if num_plots == 0: return 
+        plot_index = 1
+
+        self.ax1, self.ax2 = None, None
+        
+        if tensao_disponivel:
+            self.ax1 = self.fig.add_subplot(num_plots, 1, plot_index)
+            self.line1, = self.ax1.plot([], [], marker='.', linestyle='-', label='Tensão (V)')
+            self.ax1.set_title("Medições de Tensão vs. Tempo")
+            self.ax1.set_ylabel("Tensão (V)")
+            self.ax1.grid(True)
+            self.ax1.legend()
+            plot_index += 1
+
+        if corrente_disponivel:
+            self.ax2 = self.fig.add_subplot(num_plots, 1, plot_index)
+            self.line2, = self.ax2.plot([], [], marker='.', linestyle='-', color='r', label='Corrente (A)')
+            self.ax2.set_title("Medições de Corrente vs. Tempo")
+            self.ax2.set_ylabel("Corrente (A)")
+            self.ax2.grid(True)
+            self.ax2.legend()
+        
+        self.fig.tight_layout(pad=3.0)
+        
+        canvas = FigureCanvasTkAgg(self.fig, master=self.plot_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        toolbar = NavigationToolbar2Tk(canvas, self.plot_window)
+        toolbar.update()
+        
+        self.animation = animation.FuncAnimation(self.fig, self._update_plot, interval=500, blit=False, cache_frame_data=False)
+
+    def _update_plot(self, frame):
+        try:
+            while not self.data_queue.empty():
+                data_point = self.data_queue.get()
+                
+                self.timestamps.append(data_point['timestamp'])
+                
+                if self.ax1 and 'tensao' in data_point:
+                    self.tensao_data.append(data_point['tensao'])
+                    self.line1.set_data(self.timestamps, self.tensao_data)
+                    self.ax1.relim()
+                    self.ax1.autoscale_view()
+
+                if self.ax2 and 'corrente' in data_point:
+                    self.corrente_data.append(data_point['corrente'])
+                    self.line2.set_data(self.timestamps, self.corrente_data)
+                    self.ax2.relim()
+                    self.ax2.autoscale_view()
+            
+            # Necessário para redesenhar o canvas
+            if self.plot_window:
+                self.fig.canvas.draw_idle()
+        except Exception as e:
+            print(f"Erro ao atualizar o gráfico: {e}")
+
+
+    def _on_plot_close(self):
+        if self.animation:
+            self.animation.event_source.stop()
+            self.animation = None
+        if self.plot_window:
+            self.plot_window.destroy()
+            self.plot_window = None
+
     def iniciar_sequencia(self):
+        if self.selections['multimetro'] and self.plot_var.get():
+            self.csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
+            if self.volt_meas_var.get(): self.csv_header.append("Tensao_Multimetro")
+            if self.curr_meas_var.get(): self.csv_header.append("Corrente_Multimetro")
+            self._setup_realtime_plot()
+            
         threading.Thread(target=self.executar_sequencia, daemon=True).start()
 
     def executar_sequencia(self):
@@ -427,10 +521,8 @@ class JanelaControleCombinado(tk.Toplevel):
             
             if self.selections['multimetro']:
                 csv_header = ["Timestamp", "Etapa", "Tensao_Fonte", "Corrente_Fonte", "Modo_Carga", "Valor_Carga"]
-                if medir_tensao:
-                    csv_header.append("Tensao_Multimetro")
-                if medir_corrente:
-                    csv_header.append("Corrente_Multimetro")
+                if medir_tensao: csv_header.append("Tensao_Multimetro")
+                if medir_corrente: csv_header.append("Corrente_Multimetro")
                 
                 csv_file = open(csv_filename, 'w', newline='', encoding='utf-8')
                 csv_writer = csv.writer(csv_file)
@@ -507,6 +599,8 @@ class JanelaControleCombinado(tk.Toplevel):
                     if stop_condition_met: break
 
                     tensao_multi_str, corrente_multi_str = "N/A", "N/A"
+                    valor_numerico_v, valor_numerico_i = None, None
+
                     if multimetro and self.selections['multimetro']:
                         try:
                             if medir_tensao:
@@ -515,9 +609,9 @@ class JanelaControleCombinado(tk.Toplevel):
                                 valor_bruto_v = multimetro.query("FETCH?").strip().split(',')[0]
                                 valor_numerico_v = float(valor_bruto_v)
                                 tensao_multi_str = f"{valor_numerico_v:.5f}"
-                                
+                            
                                 if valor_numerico_v < 10.0:
-                                    self.current_volt_range = 10
+                                    self.current_volt_range = 10 
                                 else:
                                     self.current_volt_range = 100
                                 
@@ -532,6 +626,13 @@ class JanelaControleCombinado(tk.Toplevel):
                             if medir_tensao: tensao_multi_str = "ERRO"
                             if medir_corrente: corrente_multi_str = "ERRO"
                     
+                    if self.plot_var.get() and self.selections['multimetro']:
+                        data_point = {'timestamp': datetime.datetime.now()}
+                        if valor_numerico_v is not None: data_point['tensao'] = valor_numerico_v
+                        if valor_numerico_i is not None: data_point['corrente'] = valor_numerico_i
+                        if len(data_point) > 1:
+                            self.data_queue.put(data_point)
+
                     if tensao_multi_str not in ["N/A", "ERRO"]: last_v = tensao_multi_str
                     if corrente_multi_str not in ["N/A", "ERRO"]: last_i = corrente_multi_str
                     
@@ -549,7 +650,7 @@ class JanelaControleCombinado(tk.Toplevel):
                         csv_file.flush()
                         os.fsync(csv_file.fileno())
 
-                    if self.selections['fonte'] and self.selections['multimetro'] and i < num_etapas_fonte:
+                    if self.selections.get('fonte') and self.selections.get('multimetro') and i < num_etapas_fonte:
                         etapa_widgets_fonte = self.etapas['fonte'][i]
                         try:
                             if etapa_widgets_fonte['volt_check_var'].get() and tensao_multi_str not in ["N/A", "ERRO"]:
@@ -565,7 +666,7 @@ class JanelaControleCombinado(tk.Toplevel):
                                     break
                         except (ValueError, TypeError): pass
 
-                    if self.selections['fonte'] and i < num_etapas_fonte:
+                    if self.selections.get('fonte') and i < num_etapas_fonte:
                         etapa_widgets_fonte = self.etapas['fonte'][i]
                         if not etapa_widgets_fonte['time_check_var'].get() and not etapa_widgets_fonte['volt_check_var'].get() and not etapa_widgets_fonte['curr_check_var'].get():
                             messagebox.showwarning("Loop Infinito", f"Etapa {etapa_num} da fonte não possui condição de parada. A etapa será pulada.")
@@ -598,69 +699,15 @@ class JanelaControleCombinado(tk.Toplevel):
                 if 'fonte' in self.instruments and self.instruments.get('fonte'): self.instruments['fonte'].write("OUTP OFF")
                 if 'carga' in self.instruments and self.instruments.get('carga'): self.instruments['carga'].write("INPUT OFF")
             except Exception: pass
+            
             self.btn_iniciar.config(state=tk.NORMAL)
             self.btn_conectar.config(state=tk.NORMAL)
-            
-            if self.selections['multimetro'] and self.plot_var.get() and csv_filename:
-                self.after(0, self.plotar_graficos, csv_filename)
 
-    def plotar_graficos(self, csv_filename):
-        try:
-            data = pd.read_csv(csv_filename)
-            if data.empty:
-                messagebox.showwarning("Gráfico", "O arquivo de dados está vazio.")
-                return
-        except Exception as e:
-            messagebox.showerror("Gráfico", f"Erro ao ler arquivo de dados:\n{e}")
-            return
-            
-        plot_window = tk.Toplevel(self)
-        plot_window.title(f"Gráficos - {os.path.basename(csv_filename)}")
-        plot_window.geometry("1000x800")
-        plot_window.grab_set()
-
-        fig = Figure(figsize=(10, 8), dpi=100)
-        
-        data['Timestamp'] = pd.to_datetime(data['Timestamp'])
-
-        tensao_disponivel = 'Tensao_Multimetro' in data.columns and self.volt_meas_var.get()
-        corrente_disponivel = 'Corrente_Multimetro' in data.columns and self.curr_meas_var.get()
-
-        if not tensao_disponivel and not corrente_disponivel:
-            messagebox.showinfo("Gráfico", "Não há dados de Tensão ou Corrente para plotar.")
-            plot_window.destroy()
-            return
-
-        if tensao_disponivel:
-            ax1 = fig.add_subplot(211 if corrente_disponivel else 111)
-            data['Tensao_Multimetro'] = pd.to_numeric(data['Tensao_Multimetro'], errors='coerce')
-            ax1.plot(data['Timestamp'], data['Tensao_Multimetro'], marker='.', linestyle='-', label='Tensão (V)')
-            ax1.set_title("Medições de Tensão vs. Tempo")
-            ax1.set_ylabel("Tensão (V)")
-            ax1.grid(True)
-            ax1.legend()
-            
-        if corrente_disponivel:
-            ax2 = fig.add_subplot(212 if tensao_disponivel else 111)
-            data['Corrente_Multimetro'] = pd.to_numeric(data['Corrente_Multimetro'], errors='coerce')
-            ax2.plot(data['Timestamp'], data['Corrente_Multimetro'], marker='.', linestyle='-', color='r', label='Corrente (A)')
-            ax2.set_title("Medições de Corrente vs. Tempo")
-            ax2.set_ylabel("Corrente (A)")
-            ax2.grid(True)
-            ax2.legend()
-
-        fig.tight_layout(pad=3.0) 
-
-        canvas = FigureCanvasTkAgg(fig, master=plot_window)
-        canvas.draw()
-        
-        toolbar = NavigationToolbar2Tk(canvas, plot_window)
-        toolbar.update()
-        
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    
     def on_close(self):
         try:
+            if self.plot_window:
+                self._on_plot_close()
+
             if 'fonte' in self.instruments and self.instruments.get('fonte'): self.instruments['fonte'].close()
             if 'carga' in self.instruments and self.instruments.get('carga'): self.instruments['carga'].close()
             if 'multimetro' in self.instruments and self.instruments.get('multimetro'): self.instruments['multimetro'].close()
