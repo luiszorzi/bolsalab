@@ -18,13 +18,11 @@ class JanelaControleCombinado(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Controle de Sequência de Testes")
-        self.geometry("1500x850")
+        self.geometry("1200x850")
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.font_titulo = ("Segoe UI", 12, "bold")
         self.font_corpo = ("Segoe UI", 11)
-        
-        ### ALTERAÇÃO ### Fontes específicas para o novo layout do resumo
         self.font_summary_title = ("Segoe UI", 10, "bold")
         self.font_summary_subtitle = ("Segoe UI", 9, "bold")
         self.font_summary_detail = ("Segoe UI", 9)
@@ -92,8 +90,14 @@ class JanelaControleCombinado(tk.Tk):
         entry_csv_name.insert(0, "medicoes")
         entry_csv_name.pack(side=tk.LEFT)
         self.entries['multimetro_csv_name'] = entry_csv_name
-        tk.Label(global_settings_frame, text=".csv", font=self.font_corpo).pack(side=tk.LEFT)
+        tk.Label(global_settings_frame, text=".csv", font=self.font_corpo).pack(side=tk.LEFT, padx=10)
         
+        ### ALTERAÇÃO ### Adicionado campo para número de ciclos
+        tk.Label(global_settings_frame, text="Número de Ciclos:", font=self.font_corpo).pack(side=tk.LEFT)
+        self.cycles_entry = tk.Entry(global_settings_frame, width=5, font=self.font_corpo)
+        self.cycles_entry.insert(0, "1")
+        self.cycles_entry.pack(side=tk.LEFT, padx=5)
+
         self.plot_var = tk.BooleanVar(value=True)
         tk.Checkbutton(global_settings_frame, text="Gerar gráficos ao vivo", variable=self.plot_var, font=self.font_corpo).pack(side=tk.LEFT, padx=20)
         
@@ -230,11 +234,9 @@ class JanelaControleCombinado(tk.Tk):
     def _clear_editor(self):
         self.editing_etapa_idx = None
         self.editor_frame.config(text="Configuração da Etapa: NOVA")
-        
         self.editor_widgets['fonte_active_var'].set(False)
         self.editor_widgets['multi_active_var'].set(False)
         self.editor_widgets['carga_active_var'].set(False)
-        
         self.editor_widgets['duracao_check_var'].set(True)
         self.editor_widgets['entry_duracao'].delete(0, tk.END); self.editor_widgets['entry_duracao'].insert(0, "10.0")
         self.editor_widgets['volt_check_var'].set(False)
@@ -243,12 +245,9 @@ class JanelaControleCombinado(tk.Tk):
         self.editor_widgets['entry_i'].delete(0, tk.END); self.editor_widgets['entry_i'].insert(0, "1.0")
         self.editor_widgets['var_modo'].set("Resistência Constante (CR)")
         self.editor_widgets['entry_val'].delete(0, tk.END); self.editor_widgets['entry_val'].insert(0, "100")
-        
         self.editor_widgets['volt_meas_var'].set(False)
         self.editor_widgets['curr_meas_var'].set(False)
-        
         self.editor_widgets['entry_intervalo'].delete(0, tk.END); self.editor_widgets['entry_intervalo'].insert(0, "1.0")
-        
         self.update_editor_visibility()
         self._update_sequence_display()
 
@@ -288,7 +287,6 @@ class JanelaControleCombinado(tk.Tk):
         self.unified_etapas.pop()
         self._update_sequence_display()
 
-    ### ALTERAÇÃO ### A função de resumo foi completamente reescrita para o novo formato.
     def _update_sequence_display(self):
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
@@ -299,7 +297,6 @@ class JanelaControleCombinado(tk.Tk):
             bg_color = "lightblue" if i == self.editing_etapa_idx else summary_frame.cget('bg')
             summary_frame.config(bg=bg_color)
             
-            # --- Título com Equipamentos Ativos ---
             active_equipment = []
             if etapa_data.get('fonte_active_var'): active_equipment.append("Fonte")
             if etapa_data.get('carga_active_var'): active_equipment.append("Carga")
@@ -309,7 +306,6 @@ class JanelaControleCombinado(tk.Tk):
 
             ttk.Separator(summary_frame, orient='horizontal').pack(fill='x', pady=4)
             
-            # --- Seção: Config. Fonte ---
             if etapa_data.get('fonte_active_var'):
                 tk.Label(summary_frame, text="Config. Fonte", font=self.font_summary_subtitle, bg=bg_color).pack(anchor='w')
                 v = etapa_data.get('entry_v', 'N/A')
@@ -317,7 +313,6 @@ class JanelaControleCombinado(tk.Tk):
                 fonte_details = f"  • Tensão: {v}V / Corrente: {i_val}A"
                 tk.Label(summary_frame, text=fonte_details, font=self.font_summary_detail, bg=bg_color).pack(anchor='w')
             
-            # --- Seção: Condições de Parada ---
             tk.Label(summary_frame, text="Condições de Parada", font=self.font_summary_subtitle, bg=bg_color).pack(anchor='w')
             if etapa_data.get('duracao_check_var'):
                 dur_text = f"  • Duração: {etapa_data.get('entry_duracao', 'N/A')}s"
@@ -334,7 +329,6 @@ class JanelaControleCombinado(tk.Tk):
                 curr_trigger_text = f"  • Gatilho Corrente: {cond} {val}{unit}"
                 tk.Label(summary_frame, text=curr_trigger_text, font=self.font_summary_detail, bg=bg_color).pack(anchor='w')
 
-            # --- Seção: Config. Carga ---
             if etapa_data.get('carga_active_var'):
                 tk.Label(summary_frame, text="Config. Carga", font=self.font_summary_subtitle, bg=bg_color).pack(anchor='w')
                 modo = etapa_data.get('var_modo', 'N/A').split('(')[0].strip()
@@ -342,7 +336,6 @@ class JanelaControleCombinado(tk.Tk):
                 carga_details = f"  • Modo: {modo} = {val}"
                 tk.Label(summary_frame, text=carga_details, font=self.font_summary_detail, bg=bg_color).pack(anchor='w')
 
-            # --- Seção: Config. Multímetro ---
             if etapa_data.get('multimetro_active_var'):
                 tk.Label(summary_frame, text="Config. Multímetro", font=self.font_summary_subtitle, bg=bg_color).pack(anchor='w')
                 medidas = []
@@ -355,15 +348,12 @@ class JanelaControleCombinado(tk.Tk):
                 tk.Label(summary_frame, text=multi_text1, font=self.font_summary_detail, bg=bg_color).pack(anchor='w')
                 tk.Label(summary_frame, text=multi_text2, font=self.font_summary_detail, bg=bg_color).pack(anchor='w')
 
-            # Tornar todos os widgets dentro do frame clicáveis
             click_handler = partial(self._load_etapa_to_editor, i)
             summary_frame.bind("<Button-1>", click_handler)
             for child in summary_frame.winfo_children():
                 if isinstance(child, (tk.Label, tk.Frame)):
                     child.bind("<Button-1>", click_handler)
 
-    # --- Funções de Conexão, Execução, Plot, etc. (sem alterações) ---
-    
     def _create_connection_ui(self, parent, key, text, default_addr):
         frame = tk.Frame(parent)
         frame.pack(pady=5, padx=5, fill='x')
@@ -447,12 +437,22 @@ class JanelaControleCombinado(tk.Tk):
         self.curr_a_medir = any(etapa.get('multi_active_var') and etapa.get('curr_meas_var') for etapa in self.unified_etapas)
         threading.Thread(target=self.executar_sequencia, daemon=True).start()
 
+    ### ALTERAÇÃO ### Função de execução agora inclui o loop de ciclos.
     def executar_sequencia(self):
         should_plot = self.plot_var.get() and (self.volt_a_medir or self.curr_a_medir)
         self.btn_iniciar.config(state=tk.DISABLED)
         self.btn_conectar.config(state=tk.DISABLED)
         if should_plot: self.btn_abrir_grafico.config(state=tk.NORMAL)
         
+        try:
+            num_cycles = int(self.cycles_entry.get())
+            if num_cycles < 1:
+                raise ValueError("O número de ciclos deve ser pelo menos 1.")
+        except ValueError as e:
+            self.after(0, lambda: messagebox.showerror("Valor Inválido", f"Número de ciclos inválido: {e}"))
+            self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
+            return
+
         csv_filename = ""
         try:
             base_name = self.entries['multimetro_csv_name'].get().strip()
@@ -460,10 +460,13 @@ class JanelaControleCombinado(tk.Tk):
                 self.after(0, lambda: messagebox.showwarning("Nome Inválido", "O nome do arquivo CSV não pode estar em branco."))
                 self.btn_iniciar.config(state=tk.NORMAL); self.btn_conectar.config(state=tk.NORMAL)
                 return
+            
             documentos_dir = os.path.join(os.path.expanduser('~'), 'Documents')
             os.makedirs(documentos_dir, exist_ok=True)
             csv_filename = os.path.join(documentos_dir, f"{base_name}.csv")
-            csv_header = ["Timestamp", "Etapa", "Tensao_Fonte_Set", "Corrente_Fonte_Set", "Modo_Carga", "Valor_Carga_Set", "Tensao_Multimetro", "Corrente_Multimetro"]
+            
+            ### ALTERAÇÃO ### Adicionada coluna 'Ciclo' ao CSV
+            csv_header = ["Timestamp", "Ciclo", "Etapa", "Tensao_Fonte_Set", "Corrente_Fonte_Set", "Modo_Carga", "Valor_Carga_Set", "Tensao_Multimetro", "Corrente_Multimetro"]
             
             with open(csv_filename, 'w', newline='', encoding='utf-8') as csv_file:
                 csv_writer = csv.writer(csv_file)
@@ -473,88 +476,98 @@ class JanelaControleCombinado(tk.Tk):
                     return
 
                 self.current_volt_range = 100 
-                for i, etapa_config in enumerate(self.unified_etapas):
-                    etapa_num = i + 1
-                    fonte = self.instruments.get('fonte')
-                    carga = self.instruments.get('carga')
-                    multimetro = self.instruments.get('multimetro')
-                    self.label_status_geral.config(text=f"Configurando Etapa {etapa_num}...")
-                    
-                    v_set, i_set, modo_carga_set, valor_carga_set = "N/A", "N/A", "N/A", "N/A"
-                    fonte_ativa = etapa_config.get('fonte_active_var')
-                    carga_ativa = etapa_config.get('carga_active_var')
-                    multi_ativo = etapa_config.get('multi_active_var')
 
-                    if fonte_ativa and fonte:
-                        v_set = float(etapa_config.get('entry_v')); i_set = float(etapa_config.get('entry_i'))
-                        fonte.write(f"VOLT {v_set}"); fonte.write(f"CURR {i_set}"); fonte.write("OUTP ON")
-                    elif fonte: fonte.write("OUTP OFF")
-
-                    if carga_ativa and carga:
-                        modo_carga_set = etapa_config.get('var_modo'); valor_carga_set = etapa_config.get('entry_val')
-                        sigla = modo_carga_set.split('(')[1].replace(')', '')
-                        valor_carga_num = float(valor_carga_set) if valor_carga_set else 0
-                        cmd_map = {"CC": "CURR", "CV": "VOLT", "CR": "RES", "CP": "POW"}
-                        if sigla in cmd_map:
-                            carga.write(f"FUNC {cmd_map[sigla]}"); carga.write(f"{cmd_map[sigla]} {valor_carga_num}")
-                        carga.write("INPUT ON")
-                    elif carga: carga.write("INPUT OFF")
-                    
-                    time.sleep(0.5)
-                    self.label_status_geral.config(text=f"Executando Etapa {etapa_num}...")
-                    
-                    parar_por_duracao = etapa_config.get('duracao_check_var')
-                    etapa_duracao = float(etapa_config.get('entry_duracao')) if parar_por_duracao else float('inf')
-                    start_time = time.time()
-
-                    if multi_ativo and multimetro:
-                        intervalo = float(etapa_config.get('entry_intervalo'))
-                        medir_v = etapa_config.get('volt_meas_var')
-                        medir_i = etapa_config.get('curr_meas_var')
+                # --- Loop de Ciclos ---
+                for cycle_num in range(1, num_cycles + 1):
+                    for i, etapa_config in enumerate(self.unified_etapas):
+                        etapa_num = i + 1
+                        self.label_status_geral.config(text=f"Ciclo {cycle_num}/{num_cycles} - Configurando Etapa {etapa_num}...")
                         
-                        while time.time() - start_time < etapa_duracao:
-                            loop_start_time = time.time()
-                            tensao_str, corrente_str, v_num, i_num = "N/A", "N/A", np.nan, np.nan
-                            try:
-                                if medir_v:
-                                    multimetro.write(f"CONF:VOLT:DC {self.current_volt_range}"); multimetro.write("INIT")
-                                    v_num = float(multimetro.query("FETCH?").strip().split(',')[0])
-                                    tensao_str = f"{v_num:.5f}"
-                                    self.current_volt_range = 10 if v_num < 10 else 100
-                                if medir_i:
-                                    multimetro.write("CONF:CURR:DC 10"); multimetro.write("INIT")
-                                    i_num = float(multimetro.query("FETCH?").strip().split(',')[0])
-                                    corrente_str = f"{i_num:.5f}"
-                            except Exception as e:
-                                print(f"Erro no multímetro: {e}"); tensao_str = corrente_str = "ERRO"
+                        fonte = self.instruments.get('fonte')
+                        carga = self.instruments.get('carga')
+                        multimetro = self.instruments.get('multimetro')
+                        
+                        v_set, i_set, modo_carga_set, valor_carga_set = "N/A", "N/A", "N/A", "N/A"
+                        fonte_ativa = etapa_config.get('fonte_active_var')
+                        carga_ativa = etapa_config.get('carga_active_var')
+                        multi_ativo = etapa_config.get('multi_active_var')
+
+                        # Configura a fonte (ativa ou desativa)
+                        if fonte_ativa and fonte:
+                            v_set = float(etapa_config.get('entry_v')); i_set = float(etapa_config.get('entry_i'))
+                            fonte.write(f"VOLT {v_set}"); fonte.write(f"CURR {i_set}"); fonte.write("OUTP ON")
+                        elif fonte:
+                            fonte.write("OUTP OFF")
+
+                        # Configura a carga (ativa ou desativa)
+                        if carga_ativa and carga:
+                            modo_carga_set = etapa_config.get('var_modo'); valor_carga_set = etapa_config.get('entry_val')
+                            sigla = modo_carga_set.split('(')[1].replace(')', '')
+                            valor_carga_num = float(valor_carga_set) if valor_carga_set else 0
+                            cmd_map = {"CC": "CURR", "CV": "VOLT", "CR": "RES", "CP": "POW"}
+                            if sigla in cmd_map:
+                                carga.write(f"FUNC {cmd_map[sigla]}"); carga.write(f"{cmd_map[sigla]} {valor_carga_num}")
+                            carga.write("INPUT ON")
+                        elif carga:
+                            carga.write("INPUT OFF")
+                        
+                        time.sleep(0.5)
+                        self.label_status_geral.config(text=f"Ciclo {cycle_num}/{num_cycles} - Executando Etapa {etapa_num}...")
+                        
+                        parar_por_duracao = etapa_config.get('duracao_check_var')
+                        etapa_duracao = float(etapa_config.get('entry_duracao')) if parar_por_duracao else float('inf')
+                        start_time = time.time()
+
+                        if multi_ativo and multimetro:
+                            intervalo = float(etapa_config.get('entry_intervalo'))
+                            medir_v = etapa_config.get('volt_meas_var')
+                            medir_i = etapa_config.get('curr_meas_var')
                             
-                            self.historico_timestamps.append(datetime.datetime.now())
-                            self.historico_tensao.append(v_num if medir_v else np.nan)
-                            self.historico_corrente.append(i_num if medir_i else np.nan)
-                            
-                            csv_writer.writerow([datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], etapa_num, v_set, i_set, modo_carga_set, valor_carga_set, tensao_str, corrente_str])
+                            while time.time() - start_time < etapa_duracao:
+                                loop_start_time = time.time()
+                                tensao_str, corrente_str, v_num, i_num = "N/A", "N/A", np.nan, np.nan
+                                try:
+                                    if medir_v:
+                                        multimetro.write(f"CONF:VOLT:DC {self.current_volt_range}"); multimetro.write("INIT")
+                                        v_num = float(multimetro.query("FETCH?").strip().split(',')[0])
+                                        tensao_str = f"{v_num:.5f}"
+                                        self.current_volt_range = 10 if v_num < 10 else 100
+                                    if medir_i:
+                                        multimetro.write("CONF:CURR:DC 10"); multimetro.write("INIT")
+                                        i_num = float(multimetro.query("FETCH?").strip().split(',')[0])
+                                        corrente_str = f"{i_num:.5f}"
+                                except Exception as e:
+                                    print(f"Erro no multímetro: {e}"); tensao_str = corrente_str = "ERRO"
+                                
+                                self.historico_timestamps.append(datetime.datetime.now())
+                                self.historico_tensao.append(v_num if medir_v else np.nan)
+                                self.historico_corrente.append(i_num if medir_i else np.nan)
+                                
+                                ### ALTERAÇÃO ### Adicionado `cycle_num` ao registro do CSV
+                                csv_writer.writerow([datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], cycle_num, etapa_num, v_set, i_set, modo_carga_set, valor_carga_set, tensao_str, corrente_str])
+                                csv_file.flush()
+                                self.label_status_geral.config(text=f"Ciclo {cycle_num}/{num_cycles} Etapa {etapa_num}: V={tensao_str} | I={corrente_str}")
+                                
+                                stop_reason = self.check_stop_conditions(etapa_config, v_num, i_num)
+                                if stop_reason:
+                                    self.label_status_geral.config(text=f"Ciclo {cycle_num}/{num_cycles} Etapa {etapa_num}: {stop_reason}!")
+                                    break
+                                
+                                elapsed_in_loop = time.time() - loop_start_time
+                                sleep_duration = intervalo - elapsed_in_loop
+                                if sleep_duration > 0: time.sleep(sleep_duration)
+                        else:
+                            csv_writer.writerow([datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], cycle_num, etapa_num, v_set, i_set, modo_carga_set, valor_carga_set, "N/A", "N/A"])
                             csv_file.flush()
-                            self.label_status_geral.config(text=f"Etapa {etapa_num}: V={tensao_str} | I={corrente_str}")
-                            
-                            stop_reason = self.check_stop_conditions(etapa_config, v_num, i_num)
-                            if stop_reason:
-                                self.label_status_geral.config(text=f"Etapa {etapa_num}: {stop_reason}!")
-                                break
-                            
-                            elapsed_in_loop = time.time() - loop_start_time
-                            sleep_duration = intervalo - elapsed_in_loop
-                            if sleep_duration > 0: time.sleep(sleep_duration)
-                    else:
-                        csv_writer.writerow([datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], etapa_num, v_set, i_set, modo_carga_set, valor_carga_set, "N/A", "N/A"])
-                        csv_file.flush()
-                        if parar_por_duracao: time.sleep(etapa_duracao)
+                            if parar_por_duracao: time.sleep(etapa_duracao)
 
-                    if fonte: fonte.write("OUTP OFF")
-                    if carga: carga.write("INPUT OFF")
-                    self.label_status_geral.config(text=f"Etapa {etapa_num} concluída.")
-                    time.sleep(0.5)
+                # Desliga os equipamentos ao final de cada etapa do ciclo
+                if fonte: fonte.write("OUTP OFF")
+                if carga: carga.write("INPUT OFF")
+                self.label_status_geral.config(text=f"Ciclo {cycle_num}/{num_cycles} Etapa {etapa_num} concluída.")
+                time.sleep(0.5)
 
-            final_message = f"Sequência finalizada. Dados salvos em '{os.path.basename(csv_filename)}'."
+            final_message = f"Sequência finalizada após {num_cycles} ciclo(s). Dados salvos em '{os.path.basename(csv_filename)}'."
             self.label_status_geral.config(text=f"Status: {final_message}")
         except Exception as e:
             self.after(0, lambda: messagebox.showerror("Erro na Sequência", f"Ocorreu um erro durante a execução:\n{e}"))
@@ -606,12 +619,12 @@ class JanelaControleCombinado(tk.Tk):
         if self.volt_a_medir:
             self.ax1 = self.fig.add_subplot(num_plots, 1, plot_index)
             self.line1, = self.ax1.plot(self.plot_timestamps, self.plot_tensao_data, marker='.', linestyle='-', label='Tensão (V)')
-            self.ax1.set_title("Medições de Tensão vs. Tempo"); self.ax1.set_ylabel("Tensão (V)"); self.ax1.grid(True); self.ax1.legend()
+            self.ax1.set_title("Medições de Tensão vs Tempo"); self.ax1.set_ylabel("Tensão (V)"); self.ax1.grid(True); self.ax1.legend()
             plot_index += 1
         if self.curr_a_medir:
             self.ax2 = self.fig.add_subplot(num_plots, 1, plot_index)
             self.line2, = self.ax2.plot(self.plot_timestamps, self.plot_corrente_data, marker='.', linestyle='-', color='r', label='Corrente (A)')
-            self.ax2.set_title("Medições de Corrente vs. Tempo"); self.ax2.set_ylabel("Corrente (A)"); self.ax2.grid(True); self.ax2.legend()
+            self.ax2.set_title("Medições de Corrente vs Tempo"); self.ax2.set_ylabel("Corrente (A)"); self.ax2.grid(True); self.ax2.legend()
         
         self.fig.tight_layout(pad=3.0)
         canvas = FigureCanvasTkAgg(self.fig, master=self.plot_window)
